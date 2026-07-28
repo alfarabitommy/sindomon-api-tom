@@ -1,0 +1,650 @@
+{
+  "info": {
+    "name": "SINDOMON API v1",
+    "description": "Complete API Collection for SINDOMON (Sistem Informasi Operasi dan Monitoring Polri). Covers all Blueprint Groups 1–7: Auth, Role, Profile, Master Data, Polda, SDM, Pengaduan, Knowledge Hub, Kamtibmas, DMS, and Logistik.\n\nBase URL: {{base_url}} (default: http://localhost:8080)\nAuth: {{token}} is auto-set by Login request's Test script.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "sindomon-architect"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "POST Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.jwt_token) {",
+                  "    pm.environment.set('token', jsonData.data.jwt_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "POST Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newoperator\",\n  \"password\": \"pass12345\",\n  \"roles_id\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/insert",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "insert"]
+            }
+          }
+        },
+        {
+          "name": "GET All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/user",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "user"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🛡️ Role",
+      "item": [
+        {
+          "name": "GET Roles",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/role",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "role"]
+            }
+          }
+        },
+        {
+          "name": "POST Role",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"Eksekutif\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/role",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "role"]
+            }
+          }
+        },
+        {
+          "name": "PUT Role",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": 1,\n  \"role\": \"Super Administrator\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/role",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "role"]
+            }
+          }
+        },
+        {
+          "name": "DELETE Role",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/role",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "role"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👤 Profile",
+      "item": [
+        {
+          "name": "GET Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "profile"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏢 Master Data",
+      "item": [
+        {
+          "name": "POST Polres",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.polres_id) {",
+                  "    pm.environment.set('polres_id', jsonData.data.polres_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nama_polres\": \"Polres Bogor Kota\",\n  \"polda_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/master/polres",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "master", "polres"]
+            }
+          }
+        },
+        {
+          "name": "PUT Polres",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nama_polres\": \"Polres Bogor Kota Updated\",\n  \"polda_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/master/polres/{{polres_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "master", "polres", "{{polres_id}}"]
+            }
+          }
+        },
+        {
+          "name": "DELETE Polres",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/master/polres/{{polres_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "master", "polres", "{{polres_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🌍 Polda",
+      "item": [
+        {
+          "name": "GET Polda",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/polda",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "polda"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 SDM",
+      "item": [
+        {
+          "name": "GET Org Tree",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sdm/org-tree?polda_id=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sdm", "org-tree"],
+              "query": [
+                { "key": "polda_id", "value": "", "description": "Filter by Polda ID (Admin/Eksekutif only)" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET Personil",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sdm/personil?search=&polres_id=&status=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sdm", "personil"],
+              "query": [
+                { "key": "search", "value": "", "description": "Search by NRP or nama_lengkap" },
+                { "key": "polres_id", "value": "", "description": "Filter by Polres ID" },
+                { "key": "status", "value": "", "description": "Filter by status: Aktif, Mutasi, Pensiun" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST Personil",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.personil_id) {",
+                  "    pm.environment.set('personil_id', jsonData.data.personil_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nrp\": \"88123456\",\n  \"nama_lengkap\": \"Bripda Andi Pratama\",\n  \"pangkat_id\": 1,\n  \"jabatan_id\": 1,\n  \"polres_id\": null\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/sdm/personil",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sdm", "personil"]
+            }
+          }
+        },
+        {
+          "name": "PUT Personil",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nrp\": \"88123456\",\n  \"nama_lengkap\": \"Bripda Andi Pratama Updated\",\n  \"pangkat_id\": 2,\n  \"jabatan_id\": 2,\n  \"polres_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/sdm/personil/{{personil_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sdm", "personil", "{{personil_id}}"]
+            }
+          }
+        },
+        {
+          "name": "POST Catat Hukum",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"personil_id\": \"{{personil_id}}\",\n  \"klasifikasi\": \"Pidana Umum\",\n  \"status_hukum\": \"Dalam Penyelidikan\",\n  \"tanggal_mulai\": \"2026-07-19\",\n  \"deskripsi_kasus\": \"Dugaan penyalahgunaan wewenang\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/sdm/hukum",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sdm", "hukum"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📋 Pengaduan",
+      "item": [
+        {
+          "name": "GET Tiket",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/pengaduan/tiket?status=&sumber=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pengaduan", "tiket"],
+              "query": [
+                { "key": "status", "value": "", "description": "Filter: Open, In Progress, Resolved, Closed" },
+                { "key": "sumber", "value": "", "description": "Filter: Email, Hotline" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH Ubah Status Tiket",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"In Progress\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/pengaduan/tiket/{{pengaduan_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "pengaduan", "tiket", "{{pengaduan_id}}", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📚 Knowledge Hub",
+      "item": [
+        {
+          "name": "GET Dokumen",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/knowledge/dokumen?kategori=&search=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "knowledge", "dokumen"],
+              "query": [
+                { "key": "kategori", "value": "", "description": "Filter: Perkap, Perpol, SOP, Juknis" },
+                { "key": "search", "value": "", "description": "Search by judul_dokumen" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🚨 Kamtibmas",
+      "item": [
+        {
+          "name": "POST Laporan",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deskripsi_kejadian\": \"Laporan demo di depan kantor gubernur\",\n  \"level_kritis\": \"Waspada\",\n  \"foto_tkp\": \"<base64_encoded_jpg_or_png>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/kamtibmas/laporan",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "kamtibmas", "laporan"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📄 DMS",
+      "item": [
+        {
+          "name": "POST Surat",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.surat_id) {",
+                  "    pm.environment.set('surat_id', jsonData.data.surat_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nomor_surat\": \"B/123/VII/2026\",\n  \"judul_surat\": \"Undangan Rapat Koordinasi\",\n  \"penerima_polda_id\": null,\n  \"file_dokumen\": \"<base64_encoded_pdf_or_docx>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/dms/surat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "dms", "surat"]
+            }
+          }
+        },
+        {
+          "name": "GET Inbox / Outbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dms/surat?tipe=inbox",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "dms", "surat"],
+              "query": [
+                { "key": "tipe", "value": "inbox", "description": "Required: inbox or outbox" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET Download Surat",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dms/surat/{{surat_id}}/download",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "dms", "surat", "{{surat_id}}", "download"]
+            }
+          }
+        },
+        {
+          "name": "PATCH Read Surat",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dms/surat/{{surat_id}}/read",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "dms", "surat", "{{surat_id}}", "read"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔫 Logistik",
+      "item": [
+        {
+          "name": "POST Senjata",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.senjata_id) {",
+                  "    pm.environment.set('senjata_id', jsonData.data.senjata_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nomor_seri\": \"SN-2026-001\",\n  \"kategori_id\": 1,\n  \"tahun_pengadaan\": \"2026\",\n  \"status_kelayakan\": \"Laik\",\n  \"foto_fisik\": \"<base64_encoded_jpg_or_png>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/logistik/senjata",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "logistik", "senjata"]
+            }
+          }
+        },
+        {
+          "name": "POST Amunisi",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kode_batch\": \"BATCH-001\",\n  \"kategori_id\": 1,\n  \"jumlah_butir\": 500,\n  \"tanggal_masuk\": \"2026-01-15\",\n  \"tanggal_kedaluwarsa\": \"2028-01-15\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/logistik/amunisi",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "logistik", "amunisi"]
+            }
+          }
+        },
+        {
+          "name": "GET Amunisi",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/logistik/amunisi?search=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "logistik", "amunisi"],
+              "query": [
+                { "key": "search", "value": "", "description": "Search by kode_batch" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST Satwa",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nomor_registrasi\": \"K9-001\",\n  \"jenis_satwa\": \"K9\",\n  \"nama_satwa\": \"Rex\",\n  \"nama_handler\": \"Bripka Budi\",\n  \"kualifikasi\": \"Patrol\",\n  \"jadwal_vaksin\": null,\n  \"foto_fisik\": \"<base64_encoded_jpg_or_png>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/logistik/satwa",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "logistik", "satwa"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
