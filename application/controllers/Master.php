@@ -23,6 +23,34 @@ class Master extends CI_Controller {
         $this->load->library('jwt');
     }
 
+    public function polda_get()
+    {
+        $payload = get_jwt_payload($this);
+        if ($payload === null) {
+            http_response_code(401);
+            echo json_encode([
+                'status' => 401,
+                'message' => 'Token tidak ditemukan atau tidak valid.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $rows = $this->db->get('tbl_polda')->result_array();
+
+        foreach ($rows as &$row) {
+            $row['id'] = (int) $row['id'];
+        }
+        unset($row);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 200,
+            'message' => 'Daftar Polda berhasil dimuat.',
+            'data' => $rows
+        ]);
+    }
+
     public function polres_post()
     {
         $payload = get_jwt_payload($this);
@@ -100,6 +128,17 @@ class Master extends CI_Controller {
         $nama_polres = trim($input['nama_polres'] ?? '');
         $polda_id = (int) ($input['polda_id'] ?? 0);
 
+        $polres_exists = $this->db->get_where('tbl_polres', ['polres_id' => $polres_id])->num_rows();
+        if ($polres_exists === 0) {
+            http_response_code(404);
+            echo json_encode([
+                'status' => 404,
+                'message' => 'Polres tidak ditemukan.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
         $polda_exists = $this->db->get_where('tbl_polda', ['id' => $polda_id])->num_rows();
 
         if ($polda_exists === 0) {
@@ -157,11 +196,62 @@ class Master extends CI_Controller {
             return;
         }
 
+        if ($this->db->affected_rows() === 0) {
+            http_response_code(404);
+            echo json_encode([
+                'status' => 404,
+                'message' => 'Polres tidak ditemukan.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
         http_response_code(200);
         echo json_encode([
             'status' => 200,
             'message' => 'Data polres berhasil dihapus.',
             'data' => (object)[]
+        ]);
+    }
+
+    public function polres_get()
+    {
+        $payload = get_jwt_payload($this);
+        if ($payload === null) {
+            http_response_code(401);
+            echo json_encode([
+                'status' => 401,
+                'message' => 'Token tidak ditemukan atau tidak valid.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $polda_id_filter = $this->input->get('polda_id');
+
+        $this->db->select('r.polres_id, r.polda_id, r.nama_polres, p.nama_polda');
+        $this->db->from('tbl_polres r');
+        $this->db->join('tbl_polda p', 'r.polda_id = p.id', 'left');
+
+        if ($polda_id_filter !== null && $polda_id_filter !== '') {
+            $this->db->where('r.polda_id', (int) $polda_id_filter);
+        }
+
+        $this->db->order_by('r.polres_id', 'ASC');
+        $query = $this->db->get();
+        $rows = $query->result_array();
+
+        foreach ($rows as &$row) {
+            $row['polres_id'] = (int) $row['polres_id'];
+            $row['polda_id'] = (int) $row['polda_id'];
+        }
+        unset($row);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 200,
+            'message' => 'Daftar Polres berhasil dimuat.',
+            'data' => $rows
         ]);
     }
 
@@ -197,6 +287,161 @@ class Master extends CI_Controller {
             'status' => 200,
             'message' => 'Daftar wilayah berhasil dimuat.',
             'data' => $rows
+        ]);
+    }
+
+    public function polda_post()
+    {
+        $payload = get_jwt_payload($this);
+
+        if ($payload === null || !isset($payload['role_id']) || $payload['role_id'] !== 1) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 403,
+                'message' => 'Akses ditolak. Anda tidak memiliki otoritas Super Admin.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $input = json_decode($this->input->raw_input_stream, true);
+
+        if (empty($input['nama_polda'])) {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 422,
+                'message' => 'Validasi gagal. Field nama_polda wajib diisi.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $nama_polda = trim($input['nama_polda']);
+        $latitude = isset($input['latitude']) ? trim($input['latitude']) : null;
+        $longitude = isset($input['longitude']) ? trim($input['longitude']) : null;
+
+        $this->db->insert('tbl_polda', [
+            'nama_polda' => $nama_polda,
+            'latitude' => $latitude,
+            'longitude' => $longitude
+        ]);
+
+        $inserted_id = $this->db->insert_id();
+
+        http_response_code(201);
+        echo json_encode([
+            'status' => 201,
+            'message' => 'Data Polda berhasil ditambahkan.',
+            'data' => [
+                'polda_id' => (int) $inserted_id
+            ]
+        ]);
+    }
+
+    public function polda_put($polda_id)
+    {
+        $payload = get_jwt_payload($this);
+
+        if ($payload === null || !isset($payload['role_id']) || $payload['role_id'] !== 1) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 403,
+                'message' => 'Akses ditolak. Anda tidak memiliki otoritas Super Admin.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $polda_exists = $this->db->get_where('tbl_polda', ['id' => $polda_id])->num_rows();
+        if ($polda_exists === 0) {
+            http_response_code(404);
+            echo json_encode([
+                'status' => 404,
+                'message' => 'Polda tidak ditemukan.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $input = json_decode($this->input->raw_input_stream, true);
+
+        $nama_polda = trim($input['nama_polda'] ?? '');
+
+        if ($nama_polda === '') {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 422,
+                'message' => 'Validasi gagal. Field nama_polda wajib diisi.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $latitude = isset($input['latitude']) ? trim($input['latitude']) : null;
+        $longitude = isset($input['longitude']) ? trim($input['longitude']) : null;
+
+        $this->db->where('id', $polda_id)->update('tbl_polda', [
+            'nama_polda' => $nama_polda,
+            'latitude' => $latitude,
+            'longitude' => $longitude
+        ]);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 200,
+            'message' => 'Data Polda berhasil diperbarui.',
+            'data' => (object)[]
+        ]);
+    }
+
+    public function polda_delete($polda_id)
+    {
+        $payload = get_jwt_payload($this);
+
+        if ($payload === null || !isset($payload['role_id']) || $payload['role_id'] !== 1) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 403,
+                'message' => 'Akses ditolak. Anda tidak memiliki otoritas Super Admin.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $polda_exists = $this->db->get_where('tbl_polda', ['id' => $polda_id])->num_rows();
+        if ($polda_exists === 0) {
+            http_response_code(404);
+            echo json_encode([
+                'status' => 404,
+                'message' => 'Polda tidak ditemukan.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $this->db->db_debug = FALSE;
+
+        $this->db->delete('tbl_polda', ['id' => $polda_id]);
+
+        $error = $this->db->error();
+
+        $this->db->db_debug = TRUE;
+
+        if ($error['code'] == 1451) {
+            http_response_code(409);
+            echo json_encode([
+                'status' => 409,
+                'message' => 'Polda tidak dapat dihapus karena masih menaungi Polres aktif (Restricted by System).',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 200,
+            'message' => 'Data Polda berhasil dihapus.',
+            'data' => (object)[]
         ]);
     }
 }

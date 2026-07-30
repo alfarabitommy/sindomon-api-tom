@@ -61,8 +61,12 @@ $route['api/v1/role']['put']    = 'role/put';
 $route['api/v1/role']['delete'] = 'role/delete';
 //Profile
 $route['api/v1/profile']['get']    = 'profile/get';
-//polda
-$route['api/v1/polda']['get']    = 'polda/get';
+// Master / Polda + Polres
+$route['api/v1/master/polda']['GET']           = 'master/polda_get';
+$route['api/v1/master/polda']['POST']          = 'master/polda_post';
+$route['api/v1/master/polda/(:num)']['PUT']    = 'master/polda_put/$1';
+$route['api/v1/master/polda/(:num)']['DELETE'] = 'master/polda_delete/$1';
+$route['api/v1/master/polres']['GET']          = 'master/polres_get';
 // Pengaduan
 $route['api/v1/pengaduan/tiket']['GET'] = 'pengaduan/tiket';
 $route['api/v1/pengaduan/tiket/(:num)/status']['PATCH'] = 'pengaduan/ubah_status/$1';
