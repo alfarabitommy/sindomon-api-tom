@@ -5,10 +5,10 @@ class Seeder extends CI_Controller {
 
     public function __construct() {
         parent::__construct();
-        if (!is_cli()) {
-            echo "CLI access only.";
-            exit;
-        }
+        // if (!is_cli()) {
+        //     echo "CLI access only.";
+        //     exit;
+        // }
         $this->load->database();
         $this->load->helper('url');
     }
