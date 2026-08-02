@@ -22,35 +22,40 @@ class Polda extends CI_Controller {
         $this->load->library('session');
         $this->load->helper('uuid');
         $this->load->helper('string');
+        $this->load->library('jwt');
     }
 
     public function get()
     {
-        $headers = $this->input->request_headers();
-        if(isset($headers['Authorization'])){
-            $authorization = $headers['Authorization'];
-            $payload = jwt_decode($authorization);
-             if ($payload === false) {
-                http_response_code(401);
-                echo json_encode(array("status" => 401, "message" => "Unauthorized", "data" => (object)[]));
-             } else {
-                $data = $this->db->query("select * from tbl_polda")->result_array();
-                $rows = array();
-                for($i=0;$i<count($data);$i++){
-                    $rows[] = array(
-                        "id" => $data[$i]['id'],
-                        "nama_polda" => $data[$i]['nama_polda'],
-                        "latitude" => $data[$i]['latitude'],
-                        "longitude" => $data[$i]['longitude'],
-                        "created_at" => $data[$i]['created_at'],
-                        "polres" => $this->db->query("select * from tbl_polres where polda_id = '".$data[$i]['id']."'")->result_array(),
-                    );
-                }
-                echo json_encode(array("message"=> "success", "status" => 200 , "data" => $rows));
-             }
-        }else{
+        $payload = get_jwt_payload($this);
+        if ($payload === null) {
             http_response_code(401);
-            echo json_encode(array("status" => 401, "message" => "Unauthorized", "data" => (object)[]));
-        }   
+            echo json_encode([
+                'status' => 401,
+                'message' => 'Token tidak ditemukan atau tidak valid.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $data = $this->db->query("select * from tbl_polda")->result_array();
+        $rows = array();
+        for ($i = 0; $i < count($data); $i++) {
+            $rows[] = array(
+                "id"         => (int) $data[$i]['id'],
+                "nama_polda" => $data[$i]['nama_polda'],
+                "latitude"   => $data[$i]['latitude'],
+                "longitude"  => $data[$i]['longitude'],
+                "created_at" => $data[$i]['created_at'],
+                "polres"     => $this->db->query("select * from tbl_polres where polda_id = '" . $this->db->escape_str($data[$i]['id']) . "'")->result_array(),
+            );
+        }
+
+        http_response_code(200);
+        echo json_encode([
+            'status'  => 200,
+            'message' => 'success',
+            'data'    => $rows
+        ]);
     }
 }
