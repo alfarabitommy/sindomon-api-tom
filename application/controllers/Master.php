@@ -68,7 +68,10 @@ class Master extends CI_Controller {
 
         $input = json_decode($this->input->raw_input_stream, true);
 
-        if (empty($input['nama_polres']) || empty($input['polda_id'])) {
+        $nama_polres = trim($input['nama_polres'] ?? '');
+        $polda_id = isset($input['polda_id']) ? (int) $input['polda_id'] : 0;
+
+        if ($nama_polres === '' || $polda_id === 0) {
             http_response_code(422);
             echo json_encode([
                 'status' => 422,
@@ -78,11 +81,8 @@ class Master extends CI_Controller {
             return;
         }
 
-        $nama_polres = trim($input['nama_polres']);
-        $polda_id = (int) $input['polda_id'];
-
-        $polda_exists = $this->db->get_where('tbl_polda', ['id' => $polda_id])->num_rows();
-
+        // Polda must exist AND be active (not soft-deleted).
+        $polda_exists = $this->db->get_where('tbl_polda', ['id' => $polda_id, 'is_active' => 1])->num_rows();
         if ($polda_exists === 0) {
             http_response_code(422);
             echo json_encode([
@@ -93,9 +93,23 @@ class Master extends CI_Controller {
             return;
         }
 
+        // Unique name check: an ACTIVE Polres with the same name blocks creation.
+        // (Soft-deleted Polres do not squat on their name — it is reusable.)
+        $duplicate = $this->db->get_where('tbl_polres', ['nama_polres' => $nama_polres, 'is_active' => 1])->num_rows();
+        if ($duplicate > 0) {
+            http_response_code(409);
+            echo json_encode([
+                'status' => 409,
+                'message' => 'Validasi gagal. Nama Polres sudah digunakan oleh Polres lain.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
         $this->db->insert('tbl_polres', [
             'polda_id' => $polda_id,
-            'nama_polres' => $nama_polres
+            'nama_polres' => $nama_polres,
+            'is_active' => 1
         ]);
 
         $inserted_id = $this->db->insert_id();
@@ -124,12 +138,8 @@ class Master extends CI_Controller {
             return;
         }
 
-        $input = json_decode($this->input->raw_input_stream, true);
-
-        $nama_polres = trim($input['nama_polres'] ?? '');
-        $polda_id = (int) ($input['polda_id'] ?? 0);
-
-        $polres_exists = $this->db->get_where('tbl_polres', ['polres_id' => $polres_id])->num_rows();
+        // Only active (not soft-deleted) Polres can be edited.
+        $polres_exists = $this->db->get_where('tbl_polres', ['polres_id' => $polres_id, 'is_active' => 1])->num_rows();
         if ($polres_exists === 0) {
             http_response_code(404);
             echo json_encode([
@@ -140,13 +150,44 @@ class Master extends CI_Controller {
             return;
         }
 
-        $polda_exists = $this->db->get_where('tbl_polda', ['id' => $polda_id])->num_rows();
+        $input = json_decode($this->input->raw_input_stream, true);
 
+        $nama_polres = trim($input['nama_polres'] ?? '');
+        $polda_id = isset($input['polda_id']) ? (int) $input['polda_id'] : 0;
+
+        if ($nama_polres === '' || $polda_id === 0) {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 422,
+                'message' => 'Validasi gagal. Field nama_polres dan polda_id wajib diisi.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Polda must exist AND be active (not soft-deleted).
+        $polda_exists = $this->db->get_where('tbl_polda', ['id' => $polda_id, 'is_active' => 1])->num_rows();
         if ($polda_exists === 0) {
             http_response_code(422);
             echo json_encode([
                 'status' => 422,
                 'message' => 'Validasi gagal. Induk Polda tidak ditemukan.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Unique name check (exclude self): an ACTIVE Polres must not share the name.
+        // (Soft-deleted Polres do not squat on their name — it is reusable.)
+        $duplicate = $this->db->where('nama_polres', $nama_polres)
+            ->where('polres_id !=', $polres_id)
+            ->where('is_active', 1)
+            ->get('tbl_polres')->num_rows();
+        if ($duplicate > 0) {
+            http_response_code(409);
+            echo json_encode([
+                'status' => 409,
+                'message' => 'Validasi gagal. Nama Polres sudah digunakan oleh Polres lain.',
                 'data' => (object)[]
             ]);
             return;
@@ -180,7 +221,8 @@ class Master extends CI_Controller {
             return;
         }
 
-        $polres_exists = $this->db->get_where('tbl_polres', ['polres_id' => $polres_id])->num_rows();
+        // Only active (not already soft-deleted) Polres can be deleted.
+        $polres_exists = $this->db->get_where('tbl_polres', ['polres_id' => $polres_id, 'is_active' => 1])->num_rows();
         if ($polres_exists === 0) {
             http_response_code(404);
             echo json_encode([
@@ -191,9 +233,10 @@ class Master extends CI_Controller {
             return;
         }
 
-        // Soft delete pre-check: no personel may still be assigned to this Polres.
+        // Soft delete pre-check: no ACTIVE personel (status_aktif = 'Aktif') may still be
+        // assigned to this Polres. Pensiun/Mutasi personnel do not block deletion.
         // (The FK 1451 guard no longer fires because we do not physically delete.)
-        $personel = $this->db->get_where('tbl_personil', ['polres_id' => $polres_id])->num_rows();
+        $personel = $this->db->get_where('tbl_personil', ['polres_id' => $polres_id, 'status_aktif' => 'Aktif'])->num_rows();
         if ($personel > 0) {
             http_response_code(409);
             echo json_encode([
@@ -235,7 +278,9 @@ class Master extends CI_Controller {
 
         $this->db->select('r.polres_id, r.polda_id, r.nama_polres, p.nama_polda');
         $this->db->from('tbl_polres r');
-        $this->db->join('tbl_polda p', 'r.polda_id = p.id', 'left');
+        // LEFT JOIN so Polres still appear even if parent Polda was soft-deleted,
+        // but the (deleted) Polda name must not leak into the response.
+        $this->db->join('tbl_polda p', 'r.polda_id = p.id AND p.is_active = 1', 'left');
         $this->db->where('r.is_active', 1);
 
         if ($polda_id_filter !== null && $polda_id_filter !== '') {
