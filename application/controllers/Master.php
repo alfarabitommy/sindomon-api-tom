@@ -36,7 +36,8 @@ class Master extends CI_Controller {
             return;
         }
 
-        $rows = $this->db->get('tbl_polda')->result_array();
+        // Only active (not soft-deleted) Polda are shown to the frontend.
+        $rows = $this->db->get_where('tbl_polda', ['is_active' => 1])->result_array();
 
         foreach ($rows as &$row) {
             $row['id'] = (int) $row['id'];
@@ -153,7 +154,8 @@ class Master extends CI_Controller {
 
         $this->db->where('polres_id', $polres_id)->update('tbl_polres', [
             'nama_polres' => $nama_polres,
-            'polda_id' => $polda_id
+            'polda_id' => $polda_id,
+            'updated_at' => date('Y-m-d H:i:s')
         ]);
 
         http_response_code(200);
@@ -178,15 +180,21 @@ class Master extends CI_Controller {
             return;
         }
 
-        $this->db->db_debug = FALSE;
+        $polres_exists = $this->db->get_where('tbl_polres', ['polres_id' => $polres_id])->num_rows();
+        if ($polres_exists === 0) {
+            http_response_code(404);
+            echo json_encode([
+                'status' => 404,
+                'message' => 'Polres tidak ditemukan.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
 
-        $this->db->delete('tbl_polres', ['polres_id' => $polres_id]);
-
-        $error = $this->db->error();
-
-        $this->db->db_debug = TRUE;
-
-        if ($error['code'] == 1451) {
+        // Soft delete pre-check: no personel may still be assigned to this Polres.
+        // (The FK 1451 guard no longer fires because we do not physically delete.)
+        $personel = $this->db->get_where('tbl_personil', ['polres_id' => $polres_id])->num_rows();
+        if ($personel > 0) {
             http_response_code(409);
             echo json_encode([
                 'status' => 409,
@@ -196,15 +204,11 @@ class Master extends CI_Controller {
             return;
         }
 
-        if ($this->db->affected_rows() === 0) {
-            http_response_code(404);
-            echo json_encode([
-                'status' => 404,
-                'message' => 'Polres tidak ditemukan.',
-                'data' => (object)[]
-            ]);
-            return;
-        }
+        // Soft delete: deactivate instead of physically removing the row.
+        $this->db->where('polres_id', $polres_id)->update('tbl_polres', [
+            'is_active' => 0,
+            'updated_at' => date('Y-m-d H:i:s')
+        ]);
 
         http_response_code(200);
         echo json_encode([
@@ -232,6 +236,7 @@ class Master extends CI_Controller {
         $this->db->select('r.polres_id, r.polda_id, r.nama_polres, p.nama_polda');
         $this->db->from('tbl_polres r');
         $this->db->join('tbl_polda p', 'r.polda_id = p.id', 'left');
+        $this->db->where('r.is_active', 1);
 
         if ($polda_id_filter !== null && $polda_id_filter !== '') {
             $this->db->where('r.polda_id', (int) $polda_id_filter);
@@ -268,10 +273,11 @@ class Master extends CI_Controller {
             return;
         }
 
-        $poldas = $this->db->get('tbl_polda')->result_array();
+        // Only active (not soft-deleted) Polda and Polres are shown to the frontend.
+        $poldas = $this->db->get_where('tbl_polda', ['is_active' => 1])->result_array();
         $rows = array();
         foreach ($poldas as $p) {
-            $polres = $this->db->get_where('tbl_polres', ['polda_id' => $p['id']])->result_array();
+            $polres = $this->db->get_where('tbl_polres', ['polda_id' => $p['id'], 'is_active' => 1])->result_array();
             $rows[] = array(
                 'id'             => (int) $p['id'],
                 'nama_polda'     => $p['nama_polda'],
@@ -317,13 +323,27 @@ class Master extends CI_Controller {
         }
 
         $nama_polda = trim($input['nama_polda']);
+
+        // Unique name check: nama_polda must not already exist (API spec: harus UNIQUE).
+        $duplicate = $this->db->get_where('tbl_polda', ['nama_polda' => $nama_polda])->num_rows();
+        if ($duplicate > 0) {
+            http_response_code(409);
+            echo json_encode([
+                'status' => 409,
+                'message' => 'Validasi gagal. Nama Polda sudah digunakan oleh Polda lain.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
         $latitude = isset($input['latitude']) ? trim($input['latitude']) : null;
         $longitude = isset($input['longitude']) ? trim($input['longitude']) : null;
 
         $this->db->insert('tbl_polda', [
             'nama_polda' => $nama_polda,
             'latitude' => $latitude,
-            'longitude' => $longitude
+            'longitude' => $longitude,
+            'is_active' => 1
         ]);
 
         $inserted_id = $this->db->insert_id();
@@ -377,14 +397,34 @@ class Master extends CI_Controller {
             return;
         }
 
-        $latitude = isset($input['latitude']) ? trim($input['latitude']) : null;
-        $longitude = isset($input['longitude']) ? trim($input['longitude']) : null;
+        // Unique name check (exclude self): nama_polda must not belong to another Polda.
+        $duplicate = $this->db->where('nama_polda', $nama_polda)
+            ->where('id !=', $polda_id)
+            ->get('tbl_polda')->num_rows();
+        if ($duplicate > 0) {
+            http_response_code(409);
+            echo json_encode([
+                'status' => 409,
+                'message' => 'Validasi gagal. Nama Polda sudah digunakan oleh Polda lain.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
 
-        $this->db->where('id', $polda_id)->update('tbl_polda', [
+        // Partial update: only touch latitude/longitude when explicitly provided,
+        // otherwise retain the existing stored values (prevents accidental erasure).
+        $update = [
             'nama_polda' => $nama_polda,
-            'latitude' => $latitude,
-            'longitude' => $longitude
-        ]);
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+        if (array_key_exists('latitude', $input)) {
+            $update['latitude'] = trim($input['latitude']);
+        }
+        if (array_key_exists('longitude', $input)) {
+            $update['longitude'] = trim($input['longitude']);
+        }
+
+        $this->db->where('id', $polda_id)->update('tbl_polda', $update);
 
         http_response_code(200);
         echo json_encode([
@@ -419,15 +459,10 @@ class Master extends CI_Controller {
             return;
         }
 
-        $this->db->db_debug = FALSE;
-
-        $this->db->delete('tbl_polda', ['id' => $polda_id]);
-
-        $error = $this->db->error();
-
-        $this->db->db_debug = TRUE;
-
-        if ($error['code'] == 1451) {
+        // Soft delete pre-check: this Polda must not have any active child Polres.
+        // (The FK 1451 guard no longer fires because we do not physically delete.)
+        $active_polres = $this->db->get_where('tbl_polres', ['polda_id' => $polda_id, 'is_active' => 1])->num_rows();
+        if ($active_polres > 0) {
             http_response_code(409);
             echo json_encode([
                 'status' => 409,
@@ -436,6 +471,12 @@ class Master extends CI_Controller {
             ]);
             return;
         }
+
+        // Soft delete: deactivate instead of physically removing the row.
+        $this->db->where('id', $polda_id)->update('tbl_polda', [
+            'is_active' => 0,
+            'updated_at' => date('Y-m-d H:i:s')
+        ]);
 
         http_response_code(200);
         echo json_encode([

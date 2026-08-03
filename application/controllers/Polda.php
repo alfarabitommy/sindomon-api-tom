@@ -38,7 +38,8 @@ class Polda extends CI_Controller {
             return;
         }
 
-        $data = $this->db->query("select * from tbl_polda")->result_array();
+        // Only active (not soft-deleted) Polda are rendered as map markers.
+        $data = $this->db->query("select * from tbl_polda where is_active = 1")->result_array();
         $rows = array();
         for ($i = 0; $i < count($data); $i++) {
             $rows[] = array(
@@ -47,7 +48,7 @@ class Polda extends CI_Controller {
                 "latitude"   => $data[$i]['latitude'],
                 "longitude"  => $data[$i]['longitude'],
                 "created_at" => $data[$i]['created_at'],
-                "polres"     => $this->db->query("select * from tbl_polres where polda_id = '" . $this->db->escape_str($data[$i]['id']) . "'")->result_array(),
+                "polres"     => $this->db->query("select * from tbl_polres where polda_id = '" . $this->db->escape_str($data[$i]['id']) . "' and is_active = 1")->result_array(),
             );
         }
 

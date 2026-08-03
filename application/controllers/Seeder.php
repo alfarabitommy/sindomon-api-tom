@@ -53,6 +53,8 @@ class Seeder extends CI_Controller {
             `nama_polda` varchar(100) DEFAULT NULL,
             `latitude` varchar(100) DEFAULT NULL,
             `longitude` varchar(100) DEFAULT NULL,
+            `is_active` tinyint(1) NOT NULL DEFAULT 1,
+            `updated_at` datetime DEFAULT NULL,
             `created_at` datetime NOT NULL DEFAULT current_timestamp(),
             PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
@@ -63,6 +65,13 @@ class Seeder extends CI_Controller {
         if (!$has_lat) {
             $this->db->query("ALTER TABLE `tbl_polda` ADD COLUMN `latitude` varchar(100) DEFAULT NULL AFTER `nama_polda`");
             $this->db->query("ALTER TABLE `tbl_polda` ADD COLUMN `longitude` varchar(100) DEFAULT NULL AFTER `latitude`");
+        }
+        $has_polda_soft = $this->db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'sindomondb' AND TABLE_NAME = 'tbl_polda'
+            AND COLUMN_NAME = 'is_active'")->num_rows();
+        if (!$has_polda_soft) {
+            $this->db->query("ALTER TABLE `tbl_polda` ADD COLUMN `is_active` tinyint(1) NOT NULL DEFAULT 1 AFTER `longitude`");
+            $this->db->query("ALTER TABLE `tbl_polda` ADD COLUMN `updated_at` datetime DEFAULT NULL AFTER `is_active`");
         }
         $has_auto = $this->db->query("SELECT EXTRA FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_SCHEMA = 'sindomondb' AND TABLE_NAME = 'tbl_polda'
@@ -75,6 +84,8 @@ class Seeder extends CI_Controller {
             `polres_id` int(11) NOT NULL AUTO_INCREMENT,
             `polda_id` int(11) NOT NULL DEFAULT 0,
             `nama_polres` varchar(100) NOT NULL,
+            `is_active` tinyint(1) NOT NULL DEFAULT 1,
+            `updated_at` datetime DEFAULT NULL,
             PRIMARY KEY (`polres_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
@@ -88,6 +99,13 @@ class Seeder extends CI_Controller {
             try {
                 $this->db->query("ALTER TABLE `tbl_polres` ADD CONSTRAINT `fk_polres_polda` FOREIGN KEY (`polda_id`) REFERENCES `tbl_polda`(`id`) ON DELETE RESTRICT");
             } catch (Exception $e) {}
+        }
+        $has_polres_soft = $this->db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'sindomondb' AND TABLE_NAME = 'tbl_polres'
+            AND COLUMN_NAME = 'is_active'")->num_rows();
+        if (!$has_polres_soft) {
+            $this->db->query("ALTER TABLE `tbl_polres` ADD COLUMN `is_active` tinyint(1) NOT NULL DEFAULT 1 AFTER `nama_polres`");
+            $this->db->query("ALTER TABLE `tbl_polres` ADD COLUMN `updated_at` datetime DEFAULT NULL AFTER `is_active`");
         }
 
         $this->db->query("CREATE TABLE IF NOT EXISTS `tbl_pangkat` (

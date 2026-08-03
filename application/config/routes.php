@@ -54,6 +54,8 @@ $route['default_controller'] = 'welcome';
 $route['api/v1/auth/insert'] = 'auth/insert_user';
 $route['api/v1/auth/login'] = 'auth/login';
 $route['api/v1/user'] = 'auth/all';
+$route['api/v1/user/(:num)']['PUT']    = 'auth/user_put/$1';
+$route['api/v1/user/(:num)']['DELETE'] = 'auth/user_delete/$1';
 //Roles
 $route['api/v1/role']['get']    = 'role/get';
 $route['api/v1/role']['post']   = 'role/post';
