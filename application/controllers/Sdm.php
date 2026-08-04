@@ -159,7 +159,7 @@ class Sdm extends CI_Controller {
             return;
         }
 
-        // ── 3. QUERY: SELECT + 4 LEFT JOINs ──
+        // ── 3. QUERY: SELECT + 5 LEFT JOINs ──
         $this->db->select("
             p.personil_id,
             p.nrp,
@@ -169,12 +169,14 @@ class Sdm extends CI_Controller {
             p.polres_id,
             pkt.nama_pangkat,
             jbt.nama_jabatan,
-            prs.nama_polres
+            prs.nama_polres,
+            pda.nama_polda
         ")
         ->from('tbl_personil p')
         ->join('tbl_pangkat pkt', 'p.pangkat_id = pkt.pangkat_id', 'left')
         ->join('tbl_jabatan jbt', 'p.jabatan_id = jbt.jabatan_id', 'left')
-        ->join('tbl_polres prs', 'p.polres_id = prs.polres_id', 'left');
+        ->join('tbl_polres prs', 'p.polres_id = prs.polres_id', 'left')
+        ->join('tbl_polda pda', 'p.polda_id = pda.id AND pda.is_active = 1', 'left');
 
         // ── 4. DYNAMIC FILTERS (GET params) ──
 
@@ -390,6 +392,25 @@ class Sdm extends CI_Controller {
             return;
         }
 
+        // ── 3. EXISTENCE & JURISDICTION PRE-CHECK ──
+        // (Fix: previously affected_rows()==0 on an unchanged row was
+        //  misread as "not found", producing a false 404.)
+        $personil = $this->db->query(
+            "SELECT personil_id FROM tbl_personil "
+            . "WHERE personil_id = " . $this->db->escape($personil_id)
+            . " AND polda_id = " . $this->db->escape($jwt_polda_id)
+        )->row_array();
+
+        if (!$personil) {
+            $this->output->set_status_header(404);
+            echo json_encode(array(
+                "message" => "Personel tidak ditemukan.",
+                "status" => 404,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
         $nrp          = trim($input['nrp'] ?? '');
         $nama_lengkap = trim($input['nama_lengkap'] ?? '');
         $pangkat_id   = (int) ($input['pangkat_id'] ?? 0);
@@ -439,7 +460,60 @@ class Sdm extends CI_Controller {
 
         $this->db->query($sql);
 
-        if ($this->db->affected_rows() === 0) {
+        $this->output->set_status_header(200);
+        echo json_encode(array(
+            "status" => 200,
+            "message" => "Data personel berhasil diperbarui.",
+            "data" => new stdClass()
+        ));
+    }
+
+    /**
+     * DELETE /api/v1/sdm/personil/(:any)
+     * Hapus Personel (hard delete) beserta riwayat proses hukumnya
+     *
+     * Auth: role_id=2 (Operator Polda) only.
+     * Jurisdiction: personil_id must belong to JWT polda_id.
+     *
+     * NOTE: tbl_proses_hukum may or may not carry FK ON DELETE CASCADE
+     * (database/v5/sindomondb.sql has it; Seeder.php does not). The
+     * hukum rows are therefore always deleted explicitly first inside a
+     * transaction — correct in both schema variants.
+     */
+    public function personil_delete($personil_id)
+    {
+        // ── 1. AUTH ──
+        $payload = $this->_extract_jwt_payload();
+        if (!$payload) {
+            $this->output->set_status_header(401);
+            echo json_encode(array(
+                "message" => "Token tidak ditemukan",
+                "status" => 401,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 2. ROLE ──
+        $role_id = isset($payload['role_id']) ? (int) $payload['role_id'] : 0;
+        if ($role_id != 2) {
+            $this->output->set_status_header(403);
+            echo json_encode(array(
+                "message" => "Akses ditolak",
+                "status" => 403,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        $jwt_polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+
+        // ── 3. EXISTENCE & JURISDICTION ──
+        $personil = $this->db->query(
+            "SELECT polda_id FROM tbl_personil WHERE personil_id = " . $this->db->escape($personil_id)
+        )->row_array();
+
+        if (!$personil) {
             $this->output->set_status_header(404);
             echo json_encode(array(
                 "message" => "Personel tidak ditemukan.",
@@ -449,10 +523,46 @@ class Sdm extends CI_Controller {
             return;
         }
 
+        if ((int) $personil['polda_id'] !== $jwt_polda_id) {
+            $this->output->set_status_header(403);
+            echo json_encode(array(
+                "message" => "Akses ditolak. Personel berada di luar yurisdiksi Anda.",
+                "status" => 403,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 4. DELETE (transaction; both tables are InnoDB) ──
+        $this->db->trans_start();
+
+        // Delete hukum rows first (safe with or without FK CASCADE)
+        $this->db->query(
+            "DELETE FROM tbl_proses_hukum WHERE personil_id = " . $this->db->escape($personil_id)
+        );
+        // Delete personil (AND polda_id = defense-in-depth)
+        $this->db->query(
+            "DELETE FROM tbl_personil WHERE personil_id = " . $this->db->escape($personil_id)
+            . " AND polda_id = " . $this->db->escape($jwt_polda_id)
+        );
+
+        $this->db->trans_complete();
+
+        if ($this->db->trans_status() === FALSE) {
+            $this->output->set_status_header(500);
+            echo json_encode(array(
+                "message" => "Gagal menghapus data personel",
+                "status" => 500,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 5. SUCCESS ──
         $this->output->set_status_header(200);
         echo json_encode(array(
             "status" => 200,
-            "message" => "Data personel berhasil diperbarui.",
+            "message" => "Personel berhasil dihapus.",
             "data" => new stdClass()
         ));
     }

@@ -90,6 +90,7 @@ $route['api/v1/sdm/org-tree']['GET'] = 'sdm/org_tree_get';
 $route['api/v1/sdm/personil']['GET'] = 'sdm/personil_get';
 $route['api/v1/sdm/personil']['POST'] = 'sdm/personil_post';
 $route['api/v1/sdm/personil/(:any)']['PUT'] = 'sdm/personil_put/$1';
+$route['api/v1/sdm/personil/(:any)']['DELETE'] = 'sdm/personil_delete/$1';
 $route['api/v1/sdm/hukum']['POST'] = 'sdm/hukum_post';
 // Master
 $route['api/v1/master/wilayah']['GET'] = 'master/wilayah_get';
