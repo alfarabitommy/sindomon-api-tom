@@ -167,6 +167,8 @@ class Sdm extends CI_Controller {
             p.status_aktif,
             p.polda_id,
             p.polres_id,
+            p.pangkat_id,
+            p.jabatan_id,
             pkt.nama_pangkat,
             jbt.nama_jabatan,
             prs.nama_polres,
@@ -219,6 +221,8 @@ class Sdm extends CI_Controller {
 
         // ── 6. TYPE CAST relational IDs (Flutter compatibility) ──
         foreach ($rows as &$row) {
+            $row['pangkat_id'] = $row['pangkat_id'] !== null ? (int) $row['pangkat_id'] : null;
+            $row['jabatan_id'] = $row['jabatan_id'] !== null ? (int) $row['jabatan_id'] : null;
             $row['polres_id'] = $row['polres_id'] !== null ? (int) $row['polres_id'] : null;
             $row['polda_id'] = (int) $row['polda_id'];
         }
