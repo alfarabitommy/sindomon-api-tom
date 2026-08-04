@@ -282,7 +282,9 @@ class Logistik extends CI_Controller {
         // ── 3. BUILD QUERY ──
         $this->db->select('a.*, k.kaliber');
         $this->db->from('tbl_amunisi_batch a');
-        $this->db->join('tbl_kategori_senjata k', 'a.kategori_id = k.kategori_id', 'left');
+        // LEFT JOIN so batches still appear even if the Kategori was soft-deleted,
+        // but the (deleted) Kategori name must not leak into the response.
+        $this->db->join('tbl_kategori_senjata k', 'a.kategori_id = k.kategori_id AND k.is_active = 1', 'left');
 
         // Jurisdiction filter
         if ($polda_id > 0) {

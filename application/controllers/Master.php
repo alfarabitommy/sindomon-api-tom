@@ -530,4 +530,259 @@ class Master extends CI_Controller {
             'data' => (object)[]
         ]);
     }
+
+    public function kategori_senjata_get()
+    {
+        $payload = get_jwt_payload($this);
+        if ($payload === null) {
+            http_response_code(401);
+            echo json_encode([
+                'status' => 401,
+                'message' => 'Token tidak ditemukan atau tidak valid.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Only active (not soft-deleted) Kategori Senjata are shown to the frontend.
+        $this->db->order_by('kategori_id', 'ASC');
+        $rows = $this->db->get_where('tbl_kategori_senjata', ['is_active' => 1])->result_array();
+
+        foreach ($rows as &$row) {
+            $row['kategori_id'] = (int) $row['kategori_id'];
+        }
+        unset($row);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 200,
+            'message' => 'Daftar Kategori Senjata berhasil dimuat.',
+            'data' => $rows
+        ]);
+    }
+
+    public function kategori_senjata_post()
+    {
+        $payload = get_jwt_payload($this);
+
+        if ($payload === null || !isset($payload['role_id']) || $payload['role_id'] !== 1) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 403,
+                'message' => 'Akses ditolak. Anda tidak memiliki otoritas Super Admin.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $input = json_decode($this->input->raw_input_stream, true);
+
+        $tipe_laras = trim($input['tipe_laras'] ?? '');
+        $kaliber    = trim($input['kaliber'] ?? '');
+
+        if ($tipe_laras === '' || $kaliber === '') {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 422,
+                'message' => 'Validasi gagal. Field tipe_laras dan kaliber wajib diisi.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Strict ENUM validation: tipe_laras must be 'Panjang' or 'Pendek' (exactly).
+        $allowed_tipe = array('Panjang', 'Pendek');
+        if (!in_array($tipe_laras, $allowed_tipe, true)) {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 422,
+                'message' => 'Validasi gagal. tipe_laras harus salah satu dari: Panjang, Pendek.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Unique combination check: same tipe_laras AND kaliber among ACTIVE rows.
+        // (Soft-deleted rows do not squat on the combination — it is reusable.)
+        $duplicate = $this->db->get_where('tbl_kategori_senjata', [
+            'tipe_laras' => $tipe_laras,
+            'kaliber'    => $kaliber,
+            'is_active'  => 1
+        ])->num_rows();
+        if ($duplicate > 0) {
+            http_response_code(409);
+            echo json_encode([
+                'status' => 409,
+                'message' => 'Validasi gagal. Kombinasi tipe_laras dan kaliber sudah digunakan oleh Kategori Senjata lain.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $this->db->insert('tbl_kategori_senjata', [
+            'tipe_laras' => $tipe_laras,
+            'kaliber'    => $kaliber,
+            'is_active'  => 1
+        ]);
+
+        $inserted_id = $this->db->insert_id();
+
+        http_response_code(201);
+        echo json_encode([
+            'status' => 201,
+            'message' => 'Data kategori senjata berhasil ditambahkan.',
+            'data' => [
+                'kategori_id' => (int) $inserted_id
+            ]
+        ]);
+    }
+
+    public function kategori_senjata_put($kategori_id)
+    {
+        $payload = get_jwt_payload($this);
+
+        if ($payload === null || !isset($payload['role_id']) || $payload['role_id'] !== 1) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 403,
+                'message' => 'Akses ditolak. Anda tidak memiliki otoritas Super Admin.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Only active (not soft-deleted) Kategori Senjata can be edited.
+        $exists = $this->db->get_where('tbl_kategori_senjata', [
+            'kategori_id' => $kategori_id,
+            'is_active'   => 1
+        ])->num_rows();
+        if ($exists === 0) {
+            http_response_code(404);
+            echo json_encode([
+                'status' => 404,
+                'message' => 'Kategori Senjata tidak ditemukan.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $input = json_decode($this->input->raw_input_stream, true);
+
+        $tipe_laras = trim($input['tipe_laras'] ?? '');
+        $kaliber    = trim($input['kaliber'] ?? '');
+
+        if ($tipe_laras === '' || $kaliber === '') {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 422,
+                'message' => 'Validasi gagal. Field tipe_laras dan kaliber wajib diisi.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Strict ENUM validation: tipe_laras must be 'Panjang' or 'Pendek' (exactly).
+        $allowed_tipe = array('Panjang', 'Pendek');
+        if (!in_array($tipe_laras, $allowed_tipe, true)) {
+            http_response_code(422);
+            echo json_encode([
+                'status' => 422,
+                'message' => 'Validasi gagal. tipe_laras harus salah satu dari: Panjang, Pendek.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Unique combination check (exclude self): an ACTIVE Kategori must not share
+        // the same tipe_laras + kaliber. (Soft-deleted rows do not squat.)
+        $duplicate = $this->db->where('tipe_laras', $tipe_laras)
+            ->where('kaliber', $kaliber)
+            ->where('kategori_id !=', $kategori_id)
+            ->where('is_active', 1)
+            ->get('tbl_kategori_senjata')->num_rows();
+        if ($duplicate > 0) {
+            http_response_code(409);
+            echo json_encode([
+                'status' => 409,
+                'message' => 'Validasi gagal. Kombinasi tipe_laras dan kaliber sudah digunakan oleh Kategori Senjata lain.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $this->db->where('kategori_id', $kategori_id)->update('tbl_kategori_senjata', [
+            'tipe_laras' => $tipe_laras,
+            'kaliber'    => $kaliber,
+            'updated_at' => date('Y-m-d H:i:s')
+        ]);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 200,
+            'message' => 'Data kategori senjata berhasil diperbarui.',
+            'data' => (object)[]
+        ]);
+    }
+
+    public function kategori_senjata_delete($kategori_id)
+    {
+        $payload = get_jwt_payload($this);
+
+        if ($payload === null || !isset($payload['role_id']) || $payload['role_id'] !== 1) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 403,
+                'message' => 'Akses ditolak. Anda tidak memiliki otoritas Super Admin.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Only active (not already soft-deleted) Kategori Senjata can be deleted.
+        $exists = $this->db->get_where('tbl_kategori_senjata', [
+            'kategori_id' => $kategori_id,
+            'is_active'   => 1
+        ])->num_rows();
+        if ($exists === 0) {
+            http_response_code(404);
+            echo json_encode([
+                'status' => 404,
+                'message' => 'Kategori Senjata tidak ditemukan.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Soft delete pre-check: this Kategori must not be referenced by any Senjata
+        // or Amunisi Batch (no FK constraints exist, so the guard is a manual count —
+        // the FK 1451 guard no longer fires because we do not physically delete).
+        $senjata_count = $this->db->get_where('tbl_senjata', [
+            'kategori_id' => $kategori_id
+        ])->num_rows();
+        $amunisi_count = $this->db->get_where('tbl_amunisi_batch', [
+            'kategori_id' => $kategori_id
+        ])->num_rows();
+        if ($senjata_count > 0 || $amunisi_count > 0) {
+            http_response_code(409);
+            echo json_encode([
+                'status' => 409,
+                'message' => 'Kategori tidak dapat dihapus karena masih digunakan oleh data Senjata atau Amunisi (Restricted by System).',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // Soft delete: deactivate instead of physically removing the row.
+        $this->db->where('kategori_id', $kategori_id)->update('tbl_kategori_senjata', [
+            'is_active' => 0,
+            'updated_at' => date('Y-m-d H:i:s')
+        ]);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 200,
+            'message' => 'Data kategori senjata berhasil dihapus.',
+            'data' => (object)[]
+        ]);
+    }
 }

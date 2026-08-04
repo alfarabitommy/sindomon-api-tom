@@ -126,6 +126,8 @@ class Seeder extends CI_Controller {
             `kategori_id` int(11) NOT NULL AUTO_INCREMENT,
             `tipe_laras` enum('Panjang','Pendek') NOT NULL,
             `kaliber` varchar(20) NOT NULL,
+            `is_active` tinyint(1) NOT NULL DEFAULT 1,
+            `updated_at` datetime DEFAULT NULL,
             PRIMARY KEY (`kategori_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
@@ -134,6 +136,14 @@ class Seeder extends CI_Controller {
             AND COLUMN_NAME = 'tipe_laras'")->num_rows();
         if (!$has_tipe) {
             $this->db->query("ALTER TABLE `tbl_kategori_senjata` ADD COLUMN `tipe_laras` enum('Panjang','Pendek') NOT NULL AFTER `kategori_id`");
+        }
+        // Soft delete columns: is_active + updated_at (matches tbl_polda/tbl_polres pattern)
+        $has_ks_soft = $this->db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'sindomondb' AND TABLE_NAME = 'tbl_kategori_senjata'
+            AND COLUMN_NAME = 'is_active'")->num_rows();
+        if (!$has_ks_soft) {
+            $this->db->query("ALTER TABLE `tbl_kategori_senjata` ADD COLUMN `is_active` tinyint(1) NOT NULL DEFAULT 1 AFTER `kaliber`");
+            $this->db->query("ALTER TABLE `tbl_kategori_senjata` ADD COLUMN `updated_at` datetime DEFAULT NULL AFTER `is_active`");
         }
 
         $this->db->query("CREATE TABLE IF NOT EXISTS `tbl_personil` (
@@ -347,8 +357,8 @@ class Seeder extends CI_Controller {
     private function _seed_logistik_master()
     {
         $senjata = array(
-            array('tipe_laras' => 'Pendek', 'kaliber' => '9mm'),
-            array('tipe_laras' => 'Panjang', 'kaliber' => '5.56mm'),
+            array('tipe_laras' => 'Pendek', 'kaliber' => '9mm',   'is_active' => 1),
+            array('tipe_laras' => 'Panjang', 'kaliber' => '5.56mm', 'is_active' => 1),
         );
         $this->db->insert_batch('tbl_kategori_senjata', $senjata);
         echo "  Seeded " . count($senjata) . " Kategori Senjata.\n";

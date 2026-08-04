@@ -96,5 +96,10 @@ $route['api/v1/master/wilayah']['GET'] = 'master/wilayah_get';
 $route['api/v1/master/polres']['POST'] = 'master/polres_post';
 $route['api/v1/master/polres/(:num)']['PUT'] = 'master/polres_put/$1';
 $route['api/v1/master/polres/(:num)']['DELETE'] = 'master/polres_delete/$1';
+// Master / Kategori Senjata (Logistik master data)
+$route['api/v1/master/kategori-senjata']['GET']           = 'master/kategori_senjata_get';
+$route['api/v1/master/kategori-senjata']['POST']          = 'master/kategori_senjata_post';
+$route['api/v1/master/kategori-senjata/(:num)']['PUT']    = 'master/kategori_senjata_put/$1';
+$route['api/v1/master/kategori-senjata/(:num)']['DELETE'] = 'master/kategori_senjata_delete/$1';
 $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
