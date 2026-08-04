@@ -102,5 +102,8 @@ $route['api/v1/master/kategori-senjata']['GET']           = 'master/kategori_sen
 $route['api/v1/master/kategori-senjata']['POST']          = 'master/kategori_senjata_post';
 $route['api/v1/master/kategori-senjata/(:num)']['PUT']    = 'master/kategori_senjata_put/$1';
 $route['api/v1/master/kategori-senjata/(:num)']['DELETE'] = 'master/kategori_senjata_delete/$1';
+// Master / Pangkat + Jabatan (SDM dropdown master data)
+$route['api/v1/pangkat']['GET']  = 'master/pangkat_get';
+$route['api/v1/jabatan']['GET']  = 'master/jabatan_get';
 $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;

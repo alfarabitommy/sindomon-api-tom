@@ -785,4 +785,62 @@ class Master extends CI_Controller {
             'data' => (object)[]
         ]);
     }
+
+    public function pangkat_get()
+    {
+        $payload = get_jwt_payload($this);
+        if ($payload === null) {
+            http_response_code(401);
+            echo json_encode([
+                'status' => 401,
+                'message' => 'Token tidak ditemukan atau tidak valid.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $this->db->order_by('pangkat_id', 'ASC');
+        $rows = $this->db->select('pangkat_id, nama_pangkat')->get('tbl_pangkat')->result_array();
+
+        foreach ($rows as &$row) {
+            $row['pangkat_id'] = (int) $row['pangkat_id'];
+        }
+        unset($row);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 200,
+            'message' => 'Daftar Pangkat berhasil dimuat.',
+            'data' => $rows
+        ]);
+    }
+
+    public function jabatan_get()
+    {
+        $payload = get_jwt_payload($this);
+        if ($payload === null) {
+            http_response_code(401);
+            echo json_encode([
+                'status' => 401,
+                'message' => 'Token tidak ditemukan atau tidak valid.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        $this->db->order_by('jabatan_id', 'ASC');
+        $rows = $this->db->select('jabatan_id, nama_jabatan')->get('tbl_jabatan')->result_array();
+
+        foreach ($rows as &$row) {
+            $row['jabatan_id'] = (int) $row['jabatan_id'];
+        }
+        unset($row);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 200,
+            'message' => 'Daftar Jabatan berhasil dimuat.',
+            'data' => $rows
+        ]);
+    }
 }
