@@ -679,6 +679,67 @@ class Logistik extends CI_Controller {
     }
 
     /**
+     * DELETE /api/v1/logistik/senjata/(:any)
+     *
+     * Hapus data senjata api. ID dibaca dari URL segment.
+     * Auth: JWT (polda_id untuk jurisdiksi)
+     */
+    public function senjata_delete($senjata_id)
+    {
+        // ── 1. AUTH: JWT ──
+        $payload = get_jwt_payload($this);
+        if (!$payload) {
+            $this->output->set_status_header(401);
+            echo json_encode(array(
+                "message" => "Token tidak ditemukan",
+                "status" => 401,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 2. EXISTENCE & JURISDICTION CHECK ──
+        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+        $senjata = $this->db->query(
+            "SELECT senjata_id FROM tbl_senjata "
+            . "WHERE senjata_id = " . $this->db->escape($senjata_id)
+            . " AND polda_id = " . $this->db->escape($polda_id)
+        )->row_array();
+
+        if (!$senjata) {
+            $this->output->set_content_type('application/json')->set_status_header(404);
+            echo json_encode(array(
+                "message" => "Data senjata tidak ditemukan.",
+                "status" => 404,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 3. DELETE ──
+        $sql = "DELETE FROM tbl_senjata WHERE senjata_id = " . $this->db->escape($senjata_id);
+        $delete = $this->db->query($sql);
+
+        if (!$delete) {
+            $this->output->set_content_type('application/json')->set_status_header(500);
+            echo json_encode(array(
+                "message" => "Gagal menghapus data senjata",
+                "status" => 500,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 4. SUCCESS ──
+        $this->output->set_content_type('application/json')->set_status_header(200);
+        echo json_encode(array(
+            "status" => 200,
+            "message" => "Data berhasil dihapus",
+            "data" => new stdClass()
+        ));
+    }
+
+    /**
      * OPTIONS /api/v1/logistik/senjata, /api/v1/logistik/senjata/(:any)
      *
      * CORS preflight. Route exists so CI3 passes the pre-dispatch

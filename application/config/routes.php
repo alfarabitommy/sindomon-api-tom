@@ -84,6 +84,7 @@ $route['api/v1/dms/surat/(:any)/read']['PATCH'] = 'dms/read/$1';
 $route['api/v1/logistik/senjata']['POST'] = 'logistik/senjata_post';
 $route['api/v1/logistik/senjata']['GET']  = 'logistik/senjata_get';
 $route['api/v1/logistik/senjata/(:any)']['PUT'] = 'logistik/senjata_put/$1';
+$route['api/v1/logistik/senjata/(:any)']['DELETE'] = 'logistik/senjata_delete/$1';
 $route['api/v1/logistik/senjata']['OPTIONS'] = 'logistik/senjata_options';
 $route['api/v1/logistik/senjata/(:any)']['OPTIONS'] = 'logistik/senjata_options';
 $route['api/v1/logistik/amunisi']['POST'] = 'logistik/amunisi_post';
