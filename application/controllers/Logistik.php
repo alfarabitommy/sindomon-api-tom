@@ -242,6 +242,8 @@ class Logistik extends CI_Controller {
      */
     public function senjata_put($senjata_id)
     {
+        $this->load->helper('base64_file');
+
         // ── 1. AUTH: JWT ──
         $payload = get_jwt_payload($this);
         if (!$payload) {
