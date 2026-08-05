@@ -753,4 +753,16 @@ class Logistik extends CI_Controller {
         http_response_code(200);
         exit;
     }
+
+    /**
+     * OPTIONS /api/v1/logistik/amunisi
+     *
+     * CORS preflight. Route exists so CI3 passes the pre-dispatch
+     * method_exists() gate and instantiates the controller, letting
+     * __construct() emit CORS headers.
+     */
+    public function amunisi_options() {
+        http_response_code(200);
+        exit;
+    }
 }

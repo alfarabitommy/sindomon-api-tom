@@ -90,6 +90,7 @@ $route['api/v1/logistik/senjata']['OPTIONS'] = 'logistik/senjata_options';
 $route['api/v1/logistik/senjata/(:any)']['OPTIONS'] = 'logistik/senjata_options';
 $route['api/v1/logistik/amunisi']['POST'] = 'logistik/amunisi_post';
 $route['api/v1/logistik/amunisi']['GET'] = 'logistik/amunisi_get';
+$route['api/v1/logistik/amunisi']['OPTIONS'] = 'logistik/amunisi_options';
 $route['api/v1/logistik/satwa']['POST'] = 'logistik/satwa_post';
 // SDM
 $route['api/v1/sdm/org-tree']['GET'] = 'sdm/org_tree_get';
