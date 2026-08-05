@@ -677,4 +677,17 @@ class Logistik extends CI_Controller {
             "data" => (object)[]
         ));
     }
+
+    /**
+     * OPTIONS /api/v1/logistik/senjata, /api/v1/logistik/senjata/(:any)
+     *
+     * CORS preflight. Route exists so CI3 passes the pre-dispatch
+     * method_exists() gate (CodeIgniter.php:423) and instantiates the
+     * controller, letting __construct() emit CORS headers.
+     * $id = null satisfies both the exact and (:any) OPTIONS routes.
+     */
+    public function senjata_options($id = null) {
+        http_response_code(200);
+        exit;
+    }
 }
