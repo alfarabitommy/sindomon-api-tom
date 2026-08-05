@@ -121,7 +121,7 @@ class Dms extends CI_Controller {
             return;
         }
 
-        $upload_dir = dirname(FCPATH) . '/uploads/dms/';
+        $upload_dir = FCPATH . 'uploads/dms/';
         $allowed_mimes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
         $result = save_base64_file($base64_file, $upload_dir, $allowed_mimes, 2097152);
 
