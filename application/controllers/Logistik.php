@@ -771,112 +771,427 @@ class Logistik extends CI_Controller {
     }
 
     /**
-     * POST /api/v1/logistik/satwa
+     * POST /api/v1/logistik/satwa        (create, $id = null)
+     * POST /api/v1/logistik/satwa/(:any)  (update, $id set)
      *
-     * Registrasi aset satwa (K9 & Turangga).
-     * Auth: JWT (polda_id extracted from token)
+     * Registrasi / perbarui aset satwa (K9 & Turangga).
+     * Upload via multipart/form-data — CI3 Upload library handles real
+     * image files (jpg|jpeg|png|webp, max 2MB, encrypted filename).
+     * Deliberately does NOT enforce the application/json gate that
+     * senjata_post uses, because PHP only populates $_FILES on multipart.
+     *
+     * Form fields: nomor_registrasi, jenis_satwa, nama_satwa, nama_handler,
+     *              kualifikasi, jadwal_vaksin
+     * File field:  foto (optional; only replaced when a new file is sent)
+     * Auth: JWT (polda_id auto-inject / jurisdiction)
      */
-    public function satwa_post()
+    public function satwa_post($id = null)
     {
         // ── 1. AUTH: JWT ──
         $payload = get_jwt_payload($this);
         if (!$payload) {
             $this->output->set_status_header(401);
-            echo json_encode(array("message" => "Token tidak ditemukan", "status" => 401, "data" => new stdClass()));
+            echo json_encode(array(
+                "message" => "Token tidak ditemukan",
+                "status" => 401,
+                "data" => new stdClass()
+            ));
             return;
         }
         $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
 
-        // ── 2. CONTENT TYPE GATE ──
-        if (strpos($this->input->server('CONTENT_TYPE'), 'application/json') === false) {
+        // ── 2. CONTENT-TYPE: JSON payloads rejected (multipart is the only
+        //    way PHP populates $_FILES; do NOT block multipart like senjata_post) ──
+        $content_type = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : '';
+        if (strpos($content_type, 'application/json') !== false) {
             $this->output->set_content_type('application/json')->set_status_header(415);
-            echo json_encode(array("message" => "Content-Type must be application/json", "status" => 415, "data" => (object)[]));
-            return;
-        }
-
-        // ── 3. PARSE JSON ──
-        $input = json_decode($this->input->raw_input_stream);
-        if (!$input) {
-            $this->output->set_content_type('application/json')->set_status_header(400);
-            echo json_encode(array("message" => "Invalid JSON payload", "status" => 400, "data" => (object)[]));
-            return;
-        }
-
-        // ── 4. EXTRACT FIELDS ──
-        $nomor_registrasi = isset($input->nomor_registrasi) ? trim($input->nomor_registrasi) : '';
-        $jenis_satwa      = isset($input->jenis_satwa) ? trim($input->jenis_satwa) : '';
-        $nama_satwa       = isset($input->nama_satwa) ? trim($input->nama_satwa) : '';
-        $nama_handler     = isset($input->nama_handler) ? trim($input->nama_handler) : '';
-        $kualifikasi      = isset($input->kualifikasi) ? trim($input->kualifikasi) : '';
-        $jadwal_vaksin    = isset($input->jadwal_vaksin) ? trim($input->jadwal_vaksin) : null;
-        $foto_fisik       = isset($input->foto_fisik) ? trim($input->foto_fisik) : '';
-
-        // ── 5. MANDATORY PHOTO ──
-        if (empty($foto_fisik)) {
-            $this->output->set_content_type('application/json')->set_status_header(422);
-            echo json_encode(array("status" => 422, "message" => "Validasi gagal. Foto bukti fisik satwa wajib dilampirkan.", "data" => (object)[]));
-            return;
-        }
-
-        // ── 6. UNIQUE NOMOR REGISTRASI ──
-        $dupe = $this->db->get_where('tbl_satwa', array('nomor_registrasi' => $nomor_registrasi))->row();
-        if ($dupe) {
-            $this->output->set_content_type('application/json')->set_status_header(422);
-            echo json_encode(array("status" => 422, "message" => "Nomor registrasi sudah ada di pangkalan data.", "data" => (object)[]));
-            return;
-        }
-
-        // ── 7. BEGIN TRANSACTION ──
-        $this->db->trans_begin();
-
-        // ── 8. SAVE BASE64 FILE ──
-        $upload_dir = FCPATH . 'uploads/satwa/';
-        $result = save_base64_file($foto_fisik, $upload_dir, array('image/jpeg', 'image/png', 'image/jpg'), 512000);
-
-        if (!$result['success']) {
-            $this->db->trans_rollback();
-            $this->output->set_content_type('application/json')->set_status_header(500);
             echo json_encode(array(
-                "message" => "Gagal menyimpan foto: " . $result['error'],
-                "status" => 500,
-                "data" => (object)[]
+                "message" => "Content-Type harus multipart/form-data (upload file tidak mendukung JSON).",
+                "status" => 415,
+                "data" => new stdClass()
             ));
             return;
         }
-        $foto_url = $upload_dir . $result['file_name'];
 
-        // ── 9. INSERT ──
-        $insert_data = array(
-            'polda_id'          => $polda_id,
-            'nomor_registrasi'  => $nomor_registrasi,
-            'jenis_satwa'       => $jenis_satwa,
-            'nama_satwa'        => $nama_satwa,
-            'nama_handler'      => $nama_handler,
-            'kualifikasi'       => $kualifikasi,
-            'jadwal_vaksin'     => $jadwal_vaksin,
-            'foto_url'          => $foto_url
-        );
+        // ── 3. EXTRACT FORM FIELDS ──
+        $nomor_registrasi = $this->input->post('nomor_registrasi') !== null ? trim($this->input->post('nomor_registrasi')) : '';
+        $jenis_satwa      = $this->input->post('jenis_satwa') !== null ? trim($this->input->post('jenis_satwa')) : '';
+        $nama_satwa       = $this->input->post('nama_satwa') !== null ? trim($this->input->post('nama_satwa')) : '';
+        $nama_handler     = $this->input->post('nama_handler') !== null ? trim($this->input->post('nama_handler')) : '';
+        $kualifikasi      = $this->input->post('kualifikasi') !== null ? trim($this->input->post('kualifikasi')) : '';
+        $jadwal_vaksin    = $this->input->post('jadwal_vaksin') !== null ? trim($this->input->post('jadwal_vaksin')) : '';
 
-        $this->db->insert('tbl_satwa', $insert_data);
+        $is_update = ($id !== null && $id !== '');
 
-        if ($this->db->affected_rows() === 0) {
-            $this->db->trans_rollback();
-            @unlink($foto_url);
-            $this->output->set_content_type('application/json')->set_status_header(500);
-            echo json_encode(array("message" => "Gagal menyimpan data satwa.", "status" => 500, "data" => (object)[]));
+        // ── 4. CREATE PATH ──
+        if (!$is_update) {
+            // Required field (NOT NULL column in tbl_satwa)
+            if ($nomor_registrasi === '') {
+                $this->output->set_content_type('application/json')->set_status_header(422);
+                echo json_encode(array(
+                    "status" => 422,
+                    "message" => "Validasi gagal. nomor_registrasi wajib diisi.",
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            // Unique nomor_registrasi rule
+            $check = $this->db->query(
+                "SELECT satwa_id FROM tbl_satwa WHERE nomor_registrasi = " . $this->db->escape($nomor_registrasi)
+            );
+            if ($check->num_rows() > 0) {
+                $this->output->set_content_type('application/json')->set_status_header(422);
+                echo json_encode(array(
+                    "status" => 422,
+                    "message" => "Nomor registrasi ini sudah terdaftar di pangkalan data.",
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+        }
+
+        // ── 5. UPDATE PATH: EXISTENCE & JURISDICTION CHECK ──
+        if ($is_update) {
+            $satwa = $this->db->query(
+                "SELECT satwa_id FROM tbl_satwa "
+                . "WHERE satwa_id = " . $this->db->escape($id)
+                . " AND polda_id = " . $this->db->escape($polda_id)
+            )->row_array();
+
+            if (!$satwa) {
+                $this->output->set_content_type('application/json')->set_status_header(404);
+                echo json_encode(array(
+                    "message" => "Data satwa tidak ditemukan.",
+                    "status" => 404,
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            $set = array();
+
+            if ($nomor_registrasi !== '') {
+                // Uniqueness check — exclude current record
+                $check = $this->db->query(
+                    "SELECT satwa_id FROM tbl_satwa WHERE nomor_registrasi = " . $this->db->escape($nomor_registrasi)
+                    . " AND satwa_id != " . $this->db->escape($id)
+                );
+                if ($check->num_rows() > 0) {
+                    $this->output->set_content_type('application/json')->set_status_header(422);
+                    echo json_encode(array(
+                        "status" => 422,
+                        "message" => "Nomor registrasi ini sudah terdaftar di pangkalan data.",
+                        "data" => new stdClass()
+                    ));
+                    return;
+                }
+                $set[] = "nomor_registrasi = '" . $this->db->escape_str($nomor_registrasi) . "'";
+            }
+
+            if ($jenis_satwa !== '') {
+                $set[] = "jenis_satwa = '" . $this->db->escape_str($jenis_satwa) . "'";
+            }
+
+            if ($nama_satwa !== '') {
+                $set[] = "nama_satwa = '" . $this->db->escape_str($nama_satwa) . "'";
+            }
+
+            if ($nama_handler !== '') {
+                $set[] = "nama_handler = '" . $this->db->escape_str($nama_handler) . "'";
+            }
+
+            if ($kualifikasi !== '') {
+                $set[] = "kualifikasi = '" . $this->db->escape_str($kualifikasi) . "'";
+            }
+
+            if ($jadwal_vaksin !== '') {
+                $set[] = "jadwal_vaksin = '" . $this->db->escape_str($jadwal_vaksin) . "'";
+            }
+        }
+
+        // ── 6. FILE UPLOAD (multipart, CI3 Upload library) ──
+        //    Only when a real file was submitted; foto is optional and
+        //    on UPDATE it is only replaced when a new file is sent.
+        //    Field name is `foto` (matches Flutter MultipartRequest).
+        $foto_url = null;
+        if (isset($_FILES['foto']) && $_FILES['foto']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $upload_path = FCPATH . 'uploads/satwa/';
+            if (!is_dir($upload_path)) {
+                mkdir($upload_path, 0755, true);
+            }
+
+            $config = array(
+                'upload_path'   => $upload_path,          // ./uploads/satwa/ (app root)
+                'allowed_types' => 'jpg|jpeg|png|webp',   // WebP supported
+                'max_size'      => 2048,                  // 2MB (KB)
+                'encrypt_name'  => TRUE                   // random filename
+            );
+            $this->load->library('upload', $config);
+
+            if (!$this->upload->do_upload('foto')) {
+                $error = $this->upload->display_errors('', '');
+                $err = strtolower($error);
+                if (strpos($err, 'size') !== false) {
+                    $status = 413; // file too large
+                } elseif (strpos($err, 'filetype') !== false || strpos($err, 'extension') !== false) {
+                    $status = 415; // disallowed type
+                } else {
+                    $status = 400;
+                }
+                $this->output->set_content_type('application/json')->set_status_header($status);
+                echo json_encode(array(
+                    "message" => "Gagal mengunggah foto: " . $error,
+                    "status" => $status,
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            $upload_data = $this->upload->data();
+            $foto_url = 'uploads/satwa/' . $upload_data['file_name'];
+        }
+
+        // ── 7. CREATE: INSERT ──
+        if (!$is_update) {
+            $satwa_id = generate_uuid4();
+
+            $sql = "INSERT INTO tbl_satwa (satwa_id, polda_id, nomor_registrasi, jenis_satwa, nama_satwa, nama_handler, kualifikasi, jadwal_vaksin, foto_url, created_at) "
+                 . "VALUES ("
+                 . "'" . $this->db->escape_str($satwa_id) . "', "
+                 . "'" . $this->db->escape_str($polda_id) . "', "
+                 . "'" . $this->db->escape_str($nomor_registrasi) . "', "
+                 . ($jenis_satwa !== '' ? "'" . $this->db->escape_str($jenis_satwa) . "'" : "NULL") . ", "
+                 . ($nama_satwa !== '' ? "'" . $this->db->escape_str($nama_satwa) . "'" : "NULL") . ", "
+                 . ($nama_handler !== '' ? "'" . $this->db->escape_str($nama_handler) . "'" : "NULL") . ", "
+                 . ($kualifikasi !== '' ? "'" . $this->db->escape_str($kualifikasi) . "'" : "NULL") . ", "
+                 . ($jadwal_vaksin !== '' ? "'" . $this->db->escape_str($jadwal_vaksin) . "'" : "NULL") . ", "
+                 . ($foto_url !== null ? "'" . $this->db->escape_str($foto_url) . "'" : "NULL") . ", "
+                 . "NOW()"
+                 . ")";
+
+            $insert = $this->db->query($sql);
+
+            if (!$insert) {
+                // Rollback: delete saved file
+                if ($foto_url !== null) {
+                    @unlink(FCPATH . $foto_url);
+                }
+                $this->output->set_content_type('application/json')->set_status_header(500);
+                echo json_encode(array(
+                    "message" => "Gagal menyimpan data satwa",
+                    "status" => 500,
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            // SUCCESS: HTTP 201 Created
+            $this->output->set_content_type('application/json')->set_status_header(201);
+            echo json_encode(array(
+                "status" => 201,
+                "message" => "Data satwa berhasil didaftarkan.",
+                "data" => array(
+                    "satwa_id" => $satwa_id
+                )
+            ));
             return;
         }
 
-        // ── 10. COMMIT ──
-        $this->db->trans_commit();
+        // ── 8. UPDATE: EXECUTE (jurisdiction re-enforced in WHERE) ──
+        if ($foto_url !== null) {
+            $set[] = "foto_url = '" . $this->db->escape_str($foto_url) . "'";
+        }
 
-        // ── 11. SUCCESS RESPONSE ──
-        $this->output->set_content_type('application/json')->set_status_header(201);
+        if (empty($set)) {
+            $this->output->set_content_type('application/json')->set_status_header(400);
+            echo json_encode(array(
+                "message" => "Tidak ada field yang dapat diperbarui.",
+                "status" => 400,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        $update = $this->db->query(
+            "UPDATE tbl_satwa SET " . implode(', ', $set) . " "
+            . "WHERE satwa_id = " . $this->db->escape($id)
+            . " AND polda_id = " . $this->db->escape($polda_id)
+        );
+
+        if (!$update) {
+            // Rollback: delete newly saved file
+            if ($foto_url !== null) {
+                @unlink(FCPATH . $foto_url);
+            }
+            $this->output->set_content_type('application/json')->set_status_header(500);
+            echo json_encode(array(
+                "message" => "Gagal memperbarui data satwa",
+                "status" => 500,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // SUCCESS: HTTP 200 OK
+        $this->output->set_content_type('application/json')->set_status_header(200);
         echo json_encode(array(
-            "status" => 201,
-            "message" => "Data satwa berhasil didaftarkan.",
-            "data" => (object)[]
+            "status" => 200,
+            "message" => "Data satwa berhasil diperbarui.",
+            "data" => new stdClass()
         ));
+    }
+
+    /**
+     * GET /api/v1/logistik/satwa
+     *
+     * Inventarisasi aset satwa (K9 & Turangga).
+     * Auth: JWT (polda_id for jurisdiction), ?search= filters
+     * nomor_registrasi OR nama_satwa.
+     */
+    public function satwa_get()
+    {
+        // ── 1. AUTH: JWT ──
+        $payload = get_jwt_payload($this);
+        if (!$payload) {
+            $this->output->set_status_header(401);
+            echo json_encode(array(
+                "message" => "Token tidak ditemukan",
+                "status" => 401,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 2. JURISDICTION ──
+        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+
+        // ── 3. BUILD QUERY ──
+        $this->db->from('tbl_satwa');
+
+        // Jurisdiction filter — strict: Operator Polda only sees own data
+        if ($polda_id > 0) {
+            $this->db->where('polda_id', $polda_id);
+        }
+
+        // Search filter — nomor_registrasi OR nama_satwa
+        $search = $this->input->get('search');
+        if ($search !== null && $search !== '') {
+            $this->db->group_start();
+            $this->db->like('nomor_registrasi', $search);
+            $this->db->or_like('nama_satwa', $search);
+            $this->db->group_end();
+        }
+
+        $this->db->order_by('created_at', 'DESC');
+        $query = $this->db->get();
+        $rows = $query->result_array();
+
+        // ── 4. INTEGER CASTING & MAP ──
+        $mapped = array();
+        foreach ($rows as $row) {
+            $mapped[] = array(
+                'satwa_id'         => $row['satwa_id'],
+                'polda_id'         => (int) $row['polda_id'],
+                'nomor_registrasi' => $row['nomor_registrasi'],
+                'jenis_satwa'      => $row['jenis_satwa'],
+                'nama_satwa'       => $row['nama_satwa'],
+                'nama_handler'     => $row['nama_handler'],
+                'kualifikasi'      => $row['kualifikasi'],
+                'jadwal_vaksin'    => $row['jadwal_vaksin'],
+                'foto_url'         => $row['foto_url'],
+                'created_at'       => $row['created_at'],
+            );
+        }
+
+        // ── 5. SUCCESS RESPONSE ──
+        $this->output->set_content_type('application/json')->set_status_header(200);
+        echo json_encode(array(
+            "status" => 200,
+            "message" => "Daftar satwa termuat.",
+            "data" => $mapped
+        ));
+    }
+
+    /**
+     * DELETE /api/v1/logistik/satwa/(:any)
+     *
+     * Hapus data satwa. ID dibaca dari URL segment.
+     * Auth: JWT (polda_id untuk jurisdiksi)
+     */
+    public function satwa_delete($id)
+    {
+        // ── 1. AUTH: JWT ──
+        $payload = get_jwt_payload($this);
+        if (!$payload) {
+            $this->output->set_status_header(401);
+            echo json_encode(array(
+                "message" => "Token tidak ditemukan",
+                "status" => 401,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 2. EXISTENCE & JURISDICTION CHECK ──
+        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+        $satwa = $this->db->query(
+            "SELECT satwa_id, foto_url FROM tbl_satwa "
+            . "WHERE satwa_id = " . $this->db->escape($id)
+            . " AND polda_id = " . $this->db->escape($polda_id)
+        )->row_array();
+
+        if (!$satwa) {
+            $this->output->set_content_type('application/json')->set_status_header(404);
+            echo json_encode(array(
+                "message" => "Data satwa tidak ditemukan.",
+                "status" => 404,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 3. DELETE (jurisdiction re-enforced in WHERE) ──
+        $sql = "DELETE FROM tbl_satwa "
+             . "WHERE satwa_id = " . $this->db->escape($id)
+             . " AND polda_id = " . $this->db->escape($polda_id);
+        $delete = $this->db->query($sql);
+
+        // Clean up local photo file (uploads/* only; skip remote placeholder URLs)
+        if ($delete && $satwa['foto_url'] !== null && strpos($satwa['foto_url'], 'uploads/') === 0) {
+            @unlink(FCPATH . $satwa['foto_url']);
+        }
+
+        if (!$delete) {
+            $this->output->set_content_type('application/json')->set_status_header(500);
+            echo json_encode(array(
+                "message" => "Gagal menghapus data satwa",
+                "status" => 500,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 4. SUCCESS ──
+        $this->output->set_content_type('application/json')->set_status_header(200);
+        echo json_encode(array(
+            "status" => 200,
+            "message" => "Data berhasil dihapus",
+            "data" => new stdClass()
+        ));
+    }
+
+    /**
+     * OPTIONS /api/v1/logistik/satwa, /api/v1/logistik/satwa/(:any)
+     *
+     * CORS preflight. Routes exist so CI3 passes the pre-dispatch
+     * method_exists() gate (CodeIgniter.php:423) and instantiates the
+     * controller, letting __construct() emit CORS headers.
+     * $id = null satisfies both the exact and (:any) OPTIONS routes.
+     */
+    public function satwa_options($id = null) {
+        http_response_code(200);
+        exit;
     }
 
     /**
