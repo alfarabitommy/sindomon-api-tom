@@ -1,0 +1,25 @@
+{
+  "task_id": "20260806-091748-pasted-text-1-22-lines-begin-pasted-text-1-22-lines-act",
+  "goal": "[Pasted text #1 · 22 lines]\n\n--- Begin [Pasted text #1 · 22 lines] ---\nAct as a Senior CI3 Backend Auditor. We are in DEBUG MODE.\nThe user has pushed the code to the live server, but `DELETE /api/v1/logistik/amunisi/32` is STILL returning a 404 HTML response. Flutter is sending the request perfectly. We need to inspect exactly what was written in the backend files during the previous execution.\n\nYOUR MISSION (DEBUG MODE):\nDo NOT write or refactor any code yet. Just investigate the actual file contents.\n\nStep 1: Inspect `routes.php`\n- Open `application/config/routes.php`.\n- Find ALL routes containing `api/v1/logistik/amunisi`.\n- Extract and show the exact lines. \n- Look closely: Is there a typo in the `DELETE` route? Is it placed incorrectly?\n\nStep 2: Inspect `Logistik.php`\n- Open `application/controllers/Logistik.php`.\n- Search for the `amunisi_delete` method. \n- Does it exist? If so, show the exact method signature. Is there a typo in the method name? \n\nStep 3: Output Generation\nGenerate a markdown file artifact named `backend_amunisi_delete_verify.md` (Path: `plan/backend_amunisi_delete_verify.md`) containing:\n1. \"Routes Extract\": Copy-paste the exact routing lines found in the file.\n2. \"Method Extract\": Copy-paste the exact method signature found in the controller.\n3. \"Root Cause Analysis\": Point out EXACTLY what is causing CI3 to not recognize the route or method.\n--- End [Pasted text #1 · 22 lines] ---",
+  "scope": null,
+  "non_goals": null,
+  "allowed_operations": {
+    "write": true,
+    "network": false,
+    "publish": false
+  },
+  "success_criteria": [
+    {
+      "id": "objective_evidence",
+      "description": "The goal outcome is supported by direct evidence, such as inspected code, reproduced behavior, source material, or concrete findings.",
+      "required": true,
+      "evidence_ids": null
+    },
+    {
+      "id": "verification",
+      "description": "The result has relevant verification evidence, such as tests, commands, benchmarks, manual checks, or a documented reason why verification is not applicable.",
+      "required": true,
+      "evidence_ids": null
+    }
+  ]
+}

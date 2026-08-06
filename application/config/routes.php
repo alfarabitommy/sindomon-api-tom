@@ -92,6 +92,7 @@ $route['api/v1/logistik/amunisi']['POST'] = 'logistik/amunisi_post';
 $route['api/v1/logistik/amunisi']['GET'] = 'logistik/amunisi_get';
 $route['api/v1/logistik/amunisi']['OPTIONS'] = 'logistik/amunisi_options';
 $route['api/v1/logistik/amunisi/(:any)']['OPTIONS'] = 'logistik/amunisi_options';
+$route['api/v1/logistik/amunisi/(:any)']['PUT'] = 'logistik/amunisi_put/$1';
 $route['api/v1/logistik/amunisi/(:any)']['DELETE'] = 'logistik/amunisi_delete/$1';
 $route['api/v1/logistik/satwa']['POST'] = 'logistik/satwa_post';
 // SDM

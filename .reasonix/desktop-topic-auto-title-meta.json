@@ -1,14 +1,8 @@
 {
-  "topic_20260806-073244_50b365562957e731": {
+  "topic_20260806-093948_bb782a117edfc07b": {
     "stage": 1,
     "userTurns": 1,
-    "basisHash": "9f8983300d955c14",
-    "updatedAt": 1786003130083
-  },
-  "topic_20260806-082342_a6eb430c635d9ecd": {
-    "stage": 3,
-    "userTurns": 3,
-    "basisHash": "60d4c02ac9971842",
-    "updatedAt": 1786005966785
+    "basisHash": "962a0a188de34cb4",
+    "updatedAt": 1786009239273
   }
 }
