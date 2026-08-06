@@ -23,13 +23,16 @@ class Logistik extends CI_Controller {
     }
 
     /**
-     * POST /api/v1/logistik/senjata
+     * POST /api/v1/logistik/senjata, POST /api/v1/logistik/senjata/(:any)
      *
-     * Registrasi senjata api baru.
-     * Payload (JSON): nomor_seri, kategori_id, tahun_pengadaan, status_kelayakan, foto_fisik
+     * Registrasi senjata api baru (CREATE, $id = null) atau perbarui data
+     * senjata api (UPDATE, $id diisi dari URL segment).
+     * Payload (multipart/form-data): nomor_seri, kategori_id, tahun_pengadaan,
+     * status_kelayakan, foto (file: jpg|jpeg|png|webp, max 2MB).
+     * Foto wajib pada CREATE, opsional pada UPDATE (hanya diganti bila file baru dikirim).
      * Auth: JWT (auto-inject polda_id)
      */
-    public function senjata_post()
+    public function senjata_post($id = null)
     {
         // ── 1. AUTH: JWT ──
         $payload = get_jwt_payload($this);
@@ -42,121 +45,235 @@ class Logistik extends CI_Controller {
             ));
             return;
         }
+        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
 
-        // ── 2. CONTENT-TYPE CHECK: JSON only ──
+        // ── 2. CONTENT-TYPE: JSON payloads rejected (multipart is the only
+        //    way PHP populates $_FILES; do NOT block multipart like the old code) ──
         $content_type = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : '';
-        if (strpos($content_type, 'application/json') === false) {
+        if (strpos($content_type, 'application/json') !== false) {
             $this->output->set_content_type('application/json')->set_status_header(415);
             echo json_encode(array(
-                "message" => "Content-Type harus application/json",
+                "message" => "Content-Type harus multipart/form-data (upload file tidak mendukung JSON).",
                 "status" => 415,
                 "data" => new stdClass()
             ));
             return;
         }
 
-        // ── 3. PARSE JSON PAYLOAD ──
-        $input = json_decode($this->input->raw_input_stream, true);
-        if (!$input) {
+        // ── 3. EXTRACT FORM FIELDS ──
+        $nomor_seri       = $this->input->post('nomor_seri') !== null ? trim($this->input->post('nomor_seri')) : '';
+        $kategori_id      = $this->input->post('kategori_id') !== null ? (int) $this->input->post('kategori_id') : 0;
+        $tahun_pengadaan  = $this->input->post('tahun_pengadaan') !== null ? trim($this->input->post('tahun_pengadaan')) : '';
+        $status_kelayakan = $this->input->post('status_kelayakan') !== null ? trim($this->input->post('status_kelayakan')) : '';
+
+        $is_update = ($id !== null && $id !== '');
+
+        // ── 4. CREATE PATH ──
+        if (!$is_update) {
+            // Mandatory photo rule
+            if (!isset($_FILES['foto']) || $_FILES['foto']['error'] === UPLOAD_ERR_NO_FILE) {
+                $this->output->set_content_type('application/json')->set_status_header(422);
+                echo json_encode(array(
+                    "status" => 422,
+                    "message" => "Validasi gagal. Foto bukti fisik senjata wajib dilampirkan.",
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            // Unique serial rule
+            $check = $this->db->query(
+                "SELECT senjata_id FROM tbl_senjata WHERE nomor_seri = " . $this->db->escape($nomor_seri)
+            );
+            if ($check->num_rows() > 0) {
+                $this->output->set_content_type('application/json')->set_status_header(422);
+                echo json_encode(array(
+                    "status" => 422,
+                    "message" => "Nomor Seri ini sudah terdaftar di pangkalan data.",
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+        }
+
+        // ── 5. UPDATE PATH: EXISTENCE & JURISDICTION CHECK ──
+        if ($is_update) {
+            $senjata = $this->db->query(
+                "SELECT senjata_id FROM tbl_senjata "
+                . "WHERE senjata_id = " . $this->db->escape($id)
+                . " AND polda_id = " . $this->db->escape($polda_id)
+            )->row_array();
+
+            if (!$senjata) {
+                $this->output->set_content_type('application/json')->set_status_header(404);
+                echo json_encode(array(
+                    "message" => "Data senjata tidak ditemukan.",
+                    "status" => 404,
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            $set = array();
+
+            if ($nomor_seri !== '') {
+                // Uniqueness check — exclude current record
+                $check = $this->db->query(
+                    "SELECT senjata_id FROM tbl_senjata WHERE nomor_seri = " . $this->db->escape($nomor_seri)
+                    . " AND senjata_id != " . $this->db->escape($id)
+                );
+                if ($check->num_rows() > 0) {
+                    $this->output->set_content_type('application/json')->set_status_header(422);
+                    echo json_encode(array(
+                        "status" => 422,
+                        "message" => "Nomor Seri ini sudah terdaftar di pangkalan data.",
+                        "data" => new stdClass()
+                    ));
+                    return;
+                }
+                $set[] = "nomor_seri = '" . $this->db->escape_str($nomor_seri) . "'";
+            }
+
+            if ($kategori_id > 0) {
+                $set[] = "kategori_id = '" . $this->db->escape_str($kategori_id) . "'";
+            }
+
+            if ($tahun_pengadaan !== '') {
+                $set[] = "tahun_pengadaan = '" . $this->db->escape_str($tahun_pengadaan) . "'";
+            }
+
+            if ($status_kelayakan !== '') {
+                $set[] = "status_kelayakan = '" . $this->db->escape_str($status_kelayakan) . "'";
+            }
+        }
+
+        // ── 6. FILE UPLOAD (multipart, CI3 Upload library) ──
+        //    Only when a real file was submitted; foto is optional and
+        //    on UPDATE it is only replaced when a new file is sent.
+        //    Field name is `foto` (matches Flutter MultipartRequest).
+        $foto_url = null;
+        if (isset($_FILES['foto']) && $_FILES['foto']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $upload_path = FCPATH . 'uploads/senjata/';
+            if (!is_dir($upload_path)) {
+                mkdir($upload_path, 0755, true);
+            }
+
+            $config = array(
+                'upload_path'   => $upload_path,          // ./uploads/senjata/ (app root)
+                'allowed_types' => 'jpg|jpeg|png|webp',   // WebP supported
+                'max_size'      => 2048,                  // 2MB (KB)
+                'encrypt_name'  => TRUE                   // random filename
+            );
+            $this->load->library('upload', $config);
+
+            if (!$this->upload->do_upload('foto')) {
+                $error = $this->upload->display_errors('', '');
+                $err = strtolower($error);
+                if (strpos($err, 'size') !== false) {
+                    $status = 413; // file too large
+                } elseif (strpos($err, 'filetype') !== false || strpos($err, 'extension') !== false) {
+                    $status = 415; // disallowed type
+                } else {
+                    $status = 400;
+                }
+                $this->output->set_content_type('application/json')->set_status_header($status);
+                echo json_encode(array(
+                    "message" => "Gagal mengunggah foto: " . $error,
+                    "status" => $status,
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            $upload_data = $this->upload->data();
+            $foto_url = 'uploads/senjata/' . $upload_data['file_name'];
+        }
+
+        // ── 7. CREATE: INSERT ──
+        if (!$is_update) {
+            $senjata_id = generate_uuid4();
+
+            $sql = "INSERT INTO tbl_senjata (senjata_id, nomor_seri, kategori_id, polda_id, tahun_pengadaan, status_kelayakan, foto_url, created_at) "
+                 . "VALUES ("
+                 . "'" . $this->db->escape_str($senjata_id) . "', "
+                 . "'" . $this->db->escape_str($nomor_seri) . "', "
+                 . "'" . $this->db->escape_str($kategori_id) . "', "
+                 . "'" . $this->db->escape_str($polda_id) . "', "
+                 . "'" . $this->db->escape_str($tahun_pengadaan) . "', "
+                 . "'" . $this->db->escape_str($status_kelayakan) . "', "
+                 . "'" . $this->db->escape_str($foto_url) . "', "
+                 . "NOW()"
+                 . ")";
+
+            $insert = $this->db->query($sql);
+
+            if (!$insert) {
+                // Rollback: delete saved file
+                if ($foto_url !== null) {
+                    @unlink(FCPATH . $foto_url);
+                }
+                $this->output->set_content_type('application/json')->set_status_header(500);
+                echo json_encode(array(
+                    "message" => "Gagal menyimpan data senjata",
+                    "status" => 500,
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            // SUCCESS: HTTP 201 Created
+            $this->output->set_content_type('application/json')->set_status_header(201);
+            echo json_encode(array(
+                "status" => 201,
+                "message" => "Data senjata berhasil diregistrasi.",
+                "data" => array(
+                    "senjata_id" => $senjata_id
+                )
+            ));
+            return;
+        }
+
+        // ── 8. UPDATE: EXECUTE (jurisdiction re-enforced in WHERE) ──
+        if ($foto_url !== null) {
+            $set[] = "foto_url = '" . $this->db->escape_str($foto_url) . "'";
+        }
+
+        if (empty($set)) {
             $this->output->set_content_type('application/json')->set_status_header(400);
             echo json_encode(array(
-                "message" => "Format JSON tidak valid",
+                "message" => "Tidak ada field yang dapat diperbarui.",
                 "status" => 400,
                 "data" => new stdClass()
             ));
             return;
         }
 
-        $nomor_seri       = isset($input['nomor_seri']) ? trim($input['nomor_seri']) : '';
-        $kategori_id      = isset($input['kategori_id']) ? (int) $input['kategori_id'] : 0;
-        $tahun_pengadaan  = isset($input['tahun_pengadaan']) ? trim($input['tahun_pengadaan']) : '';
-        $status_kelayakan = isset($input['status_kelayakan']) ? trim($input['status_kelayakan']) : '';
-        $foto_fisik       = isset($input['foto_fisik']) ? $input['foto_fisik'] : '';
-
-        // ── 4. MANDATORY PHOTO RULE ──
-        if ($foto_fisik === null || $foto_fisik === '') {
-            $this->output->set_content_type('application/json')->set_status_header(422);
-            echo json_encode(array(
-                "status" => 422,
-                "message" => "Validasi gagal. Foto bukti fisik senjata wajib dilampirkan.",
-                "data" => new stdClass()
-            ));
-            return;
-        }
-
-        // ── 5. UNIQUE SERIAL RULE ──
-        $check = $this->db->query(
-            "SELECT senjata_id FROM tbl_senjata WHERE nomor_seri = " . $this->db->escape($nomor_seri)
+        $update = $this->db->query(
+            "UPDATE tbl_senjata SET " . implode(', ', $set) . " "
+            . "WHERE senjata_id = " . $this->db->escape($id)
+            . " AND polda_id = " . $this->db->escape($polda_id)
         );
-        if ($check->num_rows() > 0) {
-            $this->output->set_content_type('application/json')->set_status_header(422);
-            echo json_encode(array(
-                "status" => 422,
-                "message" => "Nomor Seri ini sudah terdaftar di pangkalan data.",
-                "data" => new stdClass()
-            ));
-            return;
-        }
 
-        // ── 6. BASE64 FILE: foto_fisik (image only) ──
-        $upload_dir = FCPATH . 'uploads/senjata/';
-        $allowed_mimes = ['image/jpeg', 'image/png', 'image/jpg'];
-        $result = save_base64_file($foto_fisik, $upload_dir, $allowed_mimes, 512000);
-
-        if (!$result['success']) {
-            $status = isset($result['status']) ? $result['status'] : 400;
-            $this->output->set_content_type('application/json')->set_status_header($status);
-            echo json_encode(array(
-                "message" => $result['error'],
-                "status" => $status,
-                "data" => new stdClass()
-            ));
-            return;
-        }
-
-        $foto_url = 'uploads/senjata/' . $result['file_name'];
-
-        // ── 7. AUTO-INJECT polda_id FROM JWT ──
-        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
-
-        // ── 8. GENERATE UUID ──
-        $senjata_id = generate_uuid4();
-
-        // ── 9. INSERT INTO tbl_senjata ──
-        $sql = "INSERT INTO tbl_senjata (senjata_id, nomor_seri, kategori_id, polda_id, tahun_pengadaan, status_kelayakan, foto_url, created_at) "
-             . "VALUES ("
-             . "'" . $this->db->escape_str($senjata_id) . "', "
-             . "'" . $this->db->escape_str($nomor_seri) . "', "
-             . "'" . $this->db->escape_str($kategori_id) . "', "
-             . "'" . $this->db->escape_str($polda_id) . "', "
-             . "'" . $this->db->escape_str($tahun_pengadaan) . "', "
-             . "'" . $this->db->escape_str($status_kelayakan) . "', "
-             . "'" . $this->db->escape_str($foto_url) . "', "
-             . "NOW()"
-             . ")";
-
-        $insert = $this->db->query($sql);
-
-        if (!$insert) {
-            // Rollback: delete saved file
-            @unlink($result['file_path']);
+        if (!$update) {
+            // Rollback: delete newly saved file
+            if ($foto_url !== null) {
+                @unlink(FCPATH . $foto_url);
+            }
             $this->output->set_content_type('application/json')->set_status_header(500);
             echo json_encode(array(
-                "message" => "Gagal menyimpan data senjata",
+                "message" => "Gagal memperbarui data senjata",
                 "status" => 500,
                 "data" => new stdClass()
             ));
             return;
         }
 
-        // ── 10. SUCCESS: HTTP 201 Created ──
-        $this->output->set_content_type('application/json')->set_status_header(201);
+        // SUCCESS: HTTP 200 OK
+        $this->output->set_content_type('application/json')->set_status_header(200);
         echo json_encode(array(
-            "status" => 201,
-            "message" => "Data senjata berhasil diregistrasi.",
-            "data" => array(
-                "senjata_id" => $senjata_id
-            )
+            "status" => 200,
+            "message" => "Data senjata berhasil diperbarui.",
+            "data" => new stdClass()
         ));
     }
 
@@ -232,171 +349,6 @@ class Logistik extends CI_Controller {
             "data" => $mapped
         ));
     }
-
-    /**
-     * PUT /api/v1/logistik/senjata/(:any)
-     *
-     * Perbarui data senjata api. Semua field opsional — hanya yang dikirim yang diupdate.
-     * Payload (JSON): nomor_seri, kategori_id, tahun_pengadaan, status_kelayakan, foto_fisik (base64, opsional)
-     * Auth: JWT (polda_id untuk jurisdiksi)
-     */
-    public function senjata_put($senjata_id)
-    {
-        $this->load->helper('base64_file');
-
-        // ── 1. AUTH: JWT ──
-        $payload = get_jwt_payload($this);
-        if (!$payload) {
-            $this->output->set_status_header(401);
-            echo json_encode(array(
-                "message" => "Token tidak ditemukan",
-                "status" => 401,
-                "data" => new stdClass()
-            ));
-            return;
-        }
-
-        // ── 2. CONTENT-TYPE CHECK: JSON only ──
-        $content_type = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : '';
-        if (strpos($content_type, 'application/json') === false) {
-            $this->output->set_content_type('application/json')->set_status_header(415);
-            echo json_encode(array(
-                "message" => "Content-Type harus application/json",
-                "status" => 415,
-                "data" => new stdClass()
-            ));
-            return;
-        }
-
-        // ── 3. PARSE JSON PAYLOAD ──
-        $input = json_decode($this->input->raw_input_stream, true);
-        if (!$input) {
-            $this->output->set_content_type('application/json')->set_status_header(400);
-            echo json_encode(array(
-                "message" => "Format JSON tidak valid",
-                "status" => 400,
-                "data" => new stdClass()
-            ));
-            return;
-        }
-
-        // ── 4. EXISTENCE & JURISDICTION CHECK ──
-        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
-        $senjata = $this->db->query(
-            "SELECT senjata_id FROM tbl_senjata "
-            . "WHERE senjata_id = " . $this->db->escape($senjata_id)
-            . " AND polda_id = " . $this->db->escape($polda_id)
-        )->row_array();
-
-        if (!$senjata) {
-            $this->output->set_content_type('application/json')->set_status_header(404);
-            echo json_encode(array(
-                "message" => "Data senjata tidak ditemukan.",
-                "status" => 404,
-                "data" => new stdClass()
-            ));
-            return;
-        }
-
-        // ── 5. BUILD UPDATE SET (hanya field yang dikirim) ──
-        $set = array();
-
-        if (array_key_exists('nomor_seri', $input) && trim($input['nomor_seri']) !== '') {
-            $nomor_seri = trim($input['nomor_seri']);
-
-            // Uniqueness check — exclude current record.
-            $check = $this->db->query(
-                "SELECT senjata_id FROM tbl_senjata WHERE nomor_seri = " . $this->db->escape($nomor_seri)
-                . " AND senjata_id != " . $this->db->escape($senjata_id)
-            );
-            if ($check->num_rows() > 0) {
-                $this->output->set_content_type('application/json')->set_status_header(422);
-                echo json_encode(array(
-                    "status" => 422,
-                    "message" => "Nomor Seri ini sudah terdaftar di pangkalan data.",
-                    "data" => new stdClass()
-                ));
-                return;
-            }
-
-            $set[] = "nomor_seri = '" . $this->db->escape_str($nomor_seri) . "'";
-        }
-
-        if (array_key_exists('kategori_id', $input) && (int) $input['kategori_id'] > 0) {
-            $kategori_id = (int) $input['kategori_id'];
-            $set[] = "kategori_id = '" . $this->db->escape_str($kategori_id) . "'";
-        }
-
-        if (array_key_exists('tahun_pengadaan', $input) && trim($input['tahun_pengadaan']) !== '') {
-            $set[] = "tahun_pengadaan = '" . $this->db->escape_str(trim($input['tahun_pengadaan'])) . "'";
-        }
-
-        if (array_key_exists('status_kelayakan', $input) && trim($input['status_kelayakan']) !== '') {
-            $set[] = "status_kelayakan = '" . $this->db->escape_str(trim($input['status_kelayakan'])) . "'";
-        }
-
-        // ── 6. FOTO (opsional): hanya update bila base64 baru dikirim ──
-        if (array_key_exists('foto_fisik', $input) && $input['foto_fisik'] !== null && $input['foto_fisik'] !== '') {
-            $upload_dir = FCPATH . 'uploads/senjata/';
-            $allowed_mimes = ['image/jpeg', 'image/png', 'image/jpg'];
-            $result = save_base64_file($input['foto_fisik'], $upload_dir, $allowed_mimes, 512000);
-
-            if (!$result['success']) {
-                $status = isset($result['status']) ? $result['status'] : 400;
-                $this->output->set_content_type('application/json')->set_status_header($status);
-                echo json_encode(array(
-                    "message" => $result['error'],
-                    "status" => $status,
-                    "data" => new stdClass()
-                ));
-                return;
-            }
-
-            $foto_url = 'uploads/senjata/' . $result['file_name'];
-            $set[] = "foto_url = '" . $this->db->escape_str($foto_url) . "'";
-        }
-
-        // ── 7. NOTHING TO UPDATE? ──
-        if (empty($set)) {
-            $this->output->set_content_type('application/json')->set_status_header(400);
-            echo json_encode(array(
-                "message" => "Tidak ada field yang dapat diperbarui.",
-                "status" => 400,
-                "data" => new stdClass()
-            ));
-            return;
-        }
-
-        // ── 8. EXECUTE UPDATE ──
-        $sql = "UPDATE tbl_senjata SET " . implode(', ', $set)
-             . " WHERE senjata_id = '" . $this->db->escape_str($senjata_id) . "'"
-             . " AND polda_id = '" . $this->db->escape_str($polda_id) . "'";
-
-        $update = $this->db->query($sql);
-
-        if (!$update) {
-            // Rollback: hapus file foto baru yang sudah tersimpan bila ada
-            if (isset($result['file_path'])) {
-                @unlink($result['file_path']);
-            }
-            $this->output->set_content_type('application/json')->set_status_header(500);
-            echo json_encode(array(
-                "message" => "Gagal memperbarui data senjata",
-                "status" => 500,
-                "data" => new stdClass()
-            ));
-            return;
-        }
-
-        // ── 9. SUCCESS ──
-        $this->output->set_content_type('application/json')->set_status_header(200);
-        echo json_encode(array(
-            "status" => 200,
-            "message" => "Data senjata berhasil diperbarui.",
-            "data" => new stdClass()
-        ));
-    }
-
     /**
      * POST /api/v1/logistik/amunisi
      *
@@ -1217,7 +1169,7 @@ class Logistik extends CI_Controller {
         // ── 2. EXISTENCE & JURISDICTION CHECK ──
         $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
         $senjata = $this->db->query(
-            "SELECT senjata_id FROM tbl_senjata "
+            "SELECT senjata_id, foto_url FROM tbl_senjata "
             . "WHERE senjata_id = " . $this->db->escape($senjata_id)
             . " AND polda_id = " . $this->db->escape($polda_id)
         )->row_array();
@@ -1235,6 +1187,11 @@ class Logistik extends CI_Controller {
         // ── 3. DELETE ──
         $sql = "DELETE FROM tbl_senjata WHERE senjata_id = " . $this->db->escape($senjata_id);
         $delete = $this->db->query($sql);
+
+        // Clean up local photo file (uploads/* only; skip remote placeholder URLs)
+        if ($delete && $senjata['foto_url'] !== null && strpos($senjata['foto_url'], 'uploads/') === 0) {
+            @unlink(FCPATH . $senjata['foto_url']);
+        }
 
         if (!$delete) {
             $this->output->set_content_type('application/json')->set_status_header(500);
