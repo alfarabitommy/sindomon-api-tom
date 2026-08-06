@@ -95,6 +95,12 @@ $route['api/v1/logistik/amunisi/(:any)']['OPTIONS'] = 'logistik/amunisi_options'
 $route['api/v1/logistik/amunisi/(:any)']['PUT'] = 'logistik/amunisi_put/$1';
 $route['api/v1/logistik/amunisi/(:any)']['DELETE'] = 'logistik/amunisi_delete/$1';
 $route['api/v1/logistik/satwa']['POST'] = 'logistik/satwa_post';
+$route['api/v1/logistik/sarpras']['POST'] = 'logistik/sarpras_post';
+$route['api/v1/logistik/sarpras/(:any)']['POST'] = 'logistik/sarpras_post/$1';
+$route['api/v1/logistik/sarpras']['GET'] = 'logistik/sarpras_get';
+$route['api/v1/logistik/sarpras/(:any)']['DELETE'] = 'logistik/sarpras_delete/$1';
+$route['api/v1/logistik/sarpras']['OPTIONS'] = 'logistik/sarpras_options';
+$route['api/v1/logistik/sarpras/(:any)']['OPTIONS'] = 'logistik/sarpras_options';
 // SDM
 $route['api/v1/sdm/org-tree']['GET'] = 'sdm/org_tree_get';
 $route['api/v1/sdm/personil']['GET'] = 'sdm/personil_get';

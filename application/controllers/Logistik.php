@@ -965,4 +965,440 @@ class Logistik extends CI_Controller {
         http_response_code(200);
         exit;
     }
+
+    /**
+     * OPTIONS /api/v1/logistik/sarpras, /api/v1/logistik/sarpras/(:any)
+     *
+     * CORS preflight. Route exists so CI3 passes the pre-dispatch
+     * method_exists() gate (CodeIgniter.php:423) and instantiates the
+     * controller, letting __construct() emit CORS headers.
+     * $id = null satisfies both the exact and (:any) OPTIONS routes.
+     */
+    public function sarpras_options($id = null) {
+        http_response_code(200);
+        exit;
+    }
+
+    /**
+     * GET /api/v1/logistik/sarpras
+     *
+     * Inventarisasi Sarpras & Altmatsus.
+     * Auth: JWT (polda_id for jurisdiction), ?search= filters nama_barang OR kode_barang.
+     */
+    public function sarpras_get()
+    {
+        // ── 1. AUTH: JWT ──
+        $payload = get_jwt_payload($this);
+        if (!$payload) {
+            $this->output->set_status_header(401);
+            echo json_encode(array(
+                "message" => "Token tidak ditemukan",
+                "status" => 401,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 2. JURISDICTION ──
+        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+
+        // ── 3. BUILD QUERY ──
+        $this->db->from('tbl_sarpras');
+
+        // Jurisdiction filter
+        if ($polda_id > 0) {
+            $this->db->where('polda_id', $polda_id);
+        }
+
+        // Search filter — nama_barang OR kode_barang
+        $search = $this->input->get('search');
+        if ($search !== null && $search !== '') {
+            $this->db->group_start();
+            $this->db->like('nama_barang', $search);
+            $this->db->or_like('kode_barang', $search);
+            $this->db->group_end();
+        }
+
+        $this->db->order_by('created_at', 'DESC');
+        $query = $this->db->get();
+        $rows = $query->result_array();
+
+        // ── 4. INTEGER CASTING & MAP ──
+        $mapped = array();
+        foreach ($rows as $row) {
+            $mapped[] = array(
+                'sarpras_id'      => $row['sarpras_id'],
+                'polda_id'        => (int) $row['polda_id'],
+                'kode_barang'     => $row['kode_barang'],
+                'nama_barang'     => $row['nama_barang'],
+                'kategori'        => $row['kategori'],
+                'kondisi'         => $row['kondisi'],
+                'tahun_pengadaan' => $row['tahun_pengadaan'],
+                'foto_url'        => $row['foto_url'],
+                'created_at'      => $row['created_at'],
+                'updated_at'      => $row['updated_at'],
+            );
+        }
+
+        // ── 5. SUCCESS RESPONSE ──
+        $this->output->set_content_type('application/json')->set_status_header(200);
+        echo json_encode(array(
+            "status" => 200,
+            "message" => "Daftar sarpras termuat.",
+            "data" => $mapped
+        ));
+    }
+
+    /**
+     * POST /api/v1/logistik/sarpras        (create, $id = null)
+     * POST /api/v1/logistik/sarpras/(:any)  (update, $id set)
+     *
+     * Registrasi / perbarui Sarpras & Altmatsus.
+     * Upload via multipart/form-data — CI3 Upload library handles real
+     * image files (jpg|jpeg|png|webp, max 2MB, encrypted filename).
+     * Deliberately does NOT enforce the application/json gate that
+     * senjata_post uses, because PHP only populates $_FILES on multipart.
+     *
+     * Form fields: kode_barang, nama_barang, kategori, kondisi, tahun_pengadaan
+     * File field:  foto_url (optional; only updated when a new file is sent)
+     * Auth: JWT (polda_id auto-inject / jurisdiction)
+     */
+    public function sarpras_post($id = null)
+    {
+        // ── 1. AUTH: JWT ──
+        $payload = get_jwt_payload($this);
+        if (!$payload) {
+            $this->output->set_status_header(401);
+            echo json_encode(array(
+                "message" => "Token tidak ditemukan",
+                "status" => 401,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+
+        // ── 2. CONTENT-TYPE: JSON payloads rejected (multipart is the only
+        //    way PHP populates $_FILES; do NOT block multipart like senjata_post) ──
+        $content_type = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : '';
+        if (strpos($content_type, 'application/json') !== false) {
+            $this->output->set_content_type('application/json')->set_status_header(415);
+            echo json_encode(array(
+                "message" => "Content-Type harus multipart/form-data (upload file tidak mendukung JSON).",
+                "status" => 415,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 3. EXTRACT FORM FIELDS ──
+        $kode_barang     = $this->input->post('kode_barang') !== null ? trim($this->input->post('kode_barang')) : '';
+        $nama_barang     = $this->input->post('nama_barang') !== null ? trim($this->input->post('nama_barang')) : '';
+        $kategori        = $this->input->post('kategori') !== null ? trim($this->input->post('kategori')) : '';
+        $kondisi         = $this->input->post('kondisi') !== null ? trim($this->input->post('kondisi')) : '';
+        $tahun_pengadaan = $this->input->post('tahun_pengadaan') !== null ? trim($this->input->post('tahun_pengadaan')) : '';
+
+        $is_update = ($id !== null && $id !== '');
+        $allowed_kondisi = array('Baik', 'Rusak Ringan', 'Rusak Berat');
+
+        // ── 4. CREATE PATH ──
+        if (!$is_update) {
+            // Required fields (NOT NULL columns in tbl_sarpras)
+            if ($kode_barang === '' || $nama_barang === '') {
+                $this->output->set_content_type('application/json')->set_status_header(422);
+                echo json_encode(array(
+                    "status" => 422,
+                    "message" => "Validasi gagal. kode_barang dan nama_barang wajib diisi.",
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            // ENUM validation
+            if ($kondisi !== '' && !in_array($kondisi, $allowed_kondisi, true)) {
+                $this->output->set_content_type('application/json')->set_status_header(422);
+                echo json_encode(array(
+                    "status" => 422,
+                    "message" => "Validasi gagal. kondisi harus salah satu dari: Baik, Rusak Ringan, Rusak Berat.",
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            // Unique kode_barang rule
+            $check = $this->db->query(
+                "SELECT sarpras_id FROM tbl_sarpras WHERE kode_barang = " . $this->db->escape($kode_barang)
+            );
+            if ($check->num_rows() > 0) {
+                $this->output->set_content_type('application/json')->set_status_header(422);
+                echo json_encode(array(
+                    "status" => 422,
+                    "message" => "Kode Barang ini sudah terdaftar di pangkalan data.",
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+        }
+
+        // ── 5. UPDATE PATH: EXISTENCE & JURISDICTION CHECK ──
+        if ($is_update) {
+            $sarpras = $this->db->query(
+                "SELECT sarpras_id FROM tbl_sarpras "
+                . "WHERE sarpras_id = " . $this->db->escape($id)
+                . " AND polda_id = " . $this->db->escape($polda_id)
+            )->row_array();
+
+            if (!$sarpras) {
+                $this->output->set_content_type('application/json')->set_status_header(404);
+                echo json_encode(array(
+                    "message" => "Data sarpras tidak ditemukan.",
+                    "status" => 404,
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            $set = array();
+
+            if ($kode_barang !== '') {
+                // Uniqueness check — exclude current record
+                $check = $this->db->query(
+                    "SELECT sarpras_id FROM tbl_sarpras WHERE kode_barang = " . $this->db->escape($kode_barang)
+                    . " AND sarpras_id != " . $this->db->escape($id)
+                );
+                if ($check->num_rows() > 0) {
+                    $this->output->set_content_type('application/json')->set_status_header(422);
+                    echo json_encode(array(
+                        "status" => 422,
+                        "message" => "Kode Barang ini sudah terdaftar di pangkalan data.",
+                        "data" => new stdClass()
+                    ));
+                    return;
+                }
+                $set[] = "kode_barang = '" . $this->db->escape_str($kode_barang) . "'";
+            }
+
+            if ($nama_barang !== '') {
+                $set[] = "nama_barang = '" . $this->db->escape_str($nama_barang) . "'";
+            }
+
+            if ($kategori !== '') {
+                $set[] = "kategori = '" . $this->db->escape_str($kategori) . "'";
+            }
+
+            if ($kondisi !== '') {
+                if (!in_array($kondisi, $allowed_kondisi, true)) {
+                    $this->output->set_content_type('application/json')->set_status_header(422);
+                    echo json_encode(array(
+                        "status" => 422,
+                        "message" => "Validasi gagal. kondisi harus salah satu dari: Baik, Rusak Ringan, Rusak Berat.",
+                        "data" => new stdClass()
+                    ));
+                    return;
+                }
+                $set[] = "kondisi = '" . $this->db->escape_str($kondisi) . "'";
+            }
+
+            if ($tahun_pengadaan !== '') {
+                $set[] = "tahun_pengadaan = '" . $this->db->escape_str($tahun_pengadaan) . "'";
+            }
+        }
+
+        // ── 6. FILE UPLOAD (multipart, CI3 Upload library) ──
+        //    Only when a real file was submitted; foto_url is optional and
+        //    on UPDATE it is only replaced when a new file is sent.
+        $foto_url = null;
+        if (isset($_FILES['foto_url']) && $_FILES['foto_url']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $upload_path = FCPATH . 'uploads/sarpras/';
+            if (!is_dir($upload_path)) {
+                mkdir($upload_path, 0755, true);
+            }
+
+            $config = array(
+                'upload_path'   => $upload_path,          // ./uploads/sarpras/ (app root)
+                'allowed_types' => 'jpg|jpeg|png|webp',   // WebP supported
+                'max_size'      => 2048,                  // 2MB (KB)
+                'encrypt_name'  => TRUE                   // random filename
+            );
+            $this->load->library('upload', $config);
+
+            if (!$this->upload->do_upload('foto_url')) {
+                $error = $this->upload->display_errors('', '');
+                $err = strtolower($error);
+                if (strpos($err, 'size') !== false) {
+                    $status = 413; // file too large
+                } elseif (strpos($err, 'filetype') !== false || strpos($err, 'extension') !== false) {
+                    $status = 415; // disallowed type
+                } else {
+                    $status = 400;
+                }
+                $this->output->set_content_type('application/json')->set_status_header($status);
+                echo json_encode(array(
+                    "message" => "Gagal mengunggah foto: " . $error,
+                    "status" => $status,
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            $upload_data = $this->upload->data();
+            $foto_url = 'uploads/sarpras/' . $upload_data['file_name'];
+        }
+
+        // ── 7. CREATE: INSERT ──
+        if (!$is_update) {
+            $sarpras_id = generate_uuid4();
+
+            $sql = "INSERT INTO tbl_sarpras (sarpras_id, polda_id, kode_barang, nama_barang, kategori, kondisi, tahun_pengadaan, foto_url, created_at) "
+                 . "VALUES ("
+                 . "'" . $this->db->escape_str($sarpras_id) . "', "
+                 . "'" . $this->db->escape_str($polda_id) . "', "
+                 . "'" . $this->db->escape_str($kode_barang) . "', "
+                 . "'" . $this->db->escape_str($nama_barang) . "', "
+                 . ($kategori !== '' ? "'" . $this->db->escape_str($kategori) . "'" : "NULL") . ", "
+                 . ($kondisi !== '' ? "'" . $this->db->escape_str($kondisi) . "'" : "'Baik'") . ", "
+                 . ($tahun_pengadaan !== '' ? "'" . $this->db->escape_str($tahun_pengadaan) . "'" : "NULL") . ", "
+                 . ($foto_url !== null ? "'" . $this->db->escape_str($foto_url) . "'" : "NULL") . ", "
+                 . "NOW()"
+                 . ")";
+
+            $insert = $this->db->query($sql);
+
+            if (!$insert) {
+                // Rollback: delete saved file
+                if ($foto_url !== null) {
+                    @unlink(FCPATH . $foto_url);
+                }
+                $this->output->set_content_type('application/json')->set_status_header(500);
+                echo json_encode(array(
+                    "message" => "Gagal menyimpan data sarpras",
+                    "status" => 500,
+                    "data" => new stdClass()
+                ));
+                return;
+            }
+
+            // SUCCESS: HTTP 201 Created
+            $this->output->set_content_type('application/json')->set_status_header(201);
+            echo json_encode(array(
+                "status" => 201,
+                "message" => "Data sarpras berhasil didaftarkan.",
+                "data" => array(
+                    "sarpras_id" => $sarpras_id
+                )
+            ));
+            return;
+        }
+
+        // ── 8. UPDATE: EXECUTE (jurisdiction re-enforced in WHERE) ──
+        if ($foto_url !== null) {
+            $set[] = "foto_url = '" . $this->db->escape_str($foto_url) . "'";
+        }
+
+        if (empty($set)) {
+            $this->output->set_content_type('application/json')->set_status_header(400);
+            echo json_encode(array(
+                "message" => "Tidak ada field yang dapat diperbarui.",
+                "status" => 400,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        $update = $this->db->query(
+            "UPDATE tbl_sarpras SET " . implode(', ', $set) . ", updated_at = NOW() "
+            . "WHERE sarpras_id = " . $this->db->escape($id)
+            . " AND polda_id = " . $this->db->escape($polda_id)
+        );
+
+        if (!$update) {
+            // Rollback: delete newly saved file
+            if ($foto_url !== null) {
+                @unlink(FCPATH . $foto_url);
+            }
+            $this->output->set_content_type('application/json')->set_status_header(500);
+            echo json_encode(array(
+                "message" => "Gagal memperbarui data sarpras",
+                "status" => 500,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // SUCCESS: HTTP 200 OK
+        $this->output->set_content_type('application/json')->set_status_header(200);
+        echo json_encode(array(
+            "status" => 200,
+            "message" => "Data sarpras berhasil diperbarui.",
+            "data" => new stdClass()
+        ));
+    }
+
+    /**
+     * DELETE /api/v1/logistik/sarpras/(:any)
+     *
+     * Hapus data sarpras & altmatsus. ID dibaca dari URL segment.
+     * Auth: JWT (polda_id untuk jurisdiksi)
+     */
+    public function sarpras_delete($id)
+    {
+        // ── 1. AUTH: JWT ──
+        $payload = get_jwt_payload($this);
+        if (!$payload) {
+            $this->output->set_status_header(401);
+            echo json_encode(array(
+                "message" => "Token tidak ditemukan",
+                "status" => 401,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 2. EXISTENCE & JURISDICTION CHECK ──
+        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+        $sarpras = $this->db->query(
+            "SELECT sarpras_id, foto_url FROM tbl_sarpras "
+            . "WHERE sarpras_id = " . $this->db->escape($id)
+            . " AND polda_id = " . $this->db->escape($polda_id)
+        )->row_array();
+
+        if (!$sarpras) {
+            $this->output->set_content_type('application/json')->set_status_header(404);
+            echo json_encode(array(
+                "message" => "Data sarpras tidak ditemukan.",
+                "status" => 404,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 3. DELETE (jurisdiction re-enforced in WHERE) ──
+        $sql = "DELETE FROM tbl_sarpras "
+             . "WHERE sarpras_id = " . $this->db->escape($id)
+             . " AND polda_id = " . $this->db->escape($polda_id);
+        $delete = $this->db->query($sql);
+
+        // Clean up local photo file (uploads/* only; skip remote placeholder URLs)
+        if ($delete && $sarpras['foto_url'] !== null && strpos($sarpras['foto_url'], 'uploads/') === 0) {
+            @unlink(FCPATH . $sarpras['foto_url']);
+        }
+
+        if (!$delete) {
+            $this->output->set_content_type('application/json')->set_status_header(500);
+            echo json_encode(array(
+                "message" => "Gagal menghapus data sarpras",
+                "status" => 500,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 4. SUCCESS ──
+        $this->output->set_content_type('application/json')->set_status_header(200);
+        echo json_encode(array(
+            "status" => 200,
+            "message" => "Data berhasil dihapus",
+            "data" => new stdClass()
+        ));
+    }
 }
