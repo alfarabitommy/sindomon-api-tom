@@ -572,6 +572,67 @@ class Logistik extends CI_Controller {
     }
 
     /**
+     * DELETE /api/v1/logistik/amunisi/(:any)
+     *
+     * Hapus batch amunisi. ID dibaca dari URL segment.
+     * Auth: JWT (polda_id untuk jurisdiksi)
+     */
+    public function amunisi_delete($batch_id)
+    {
+        // ── 1. AUTH: JWT ──
+        $payload = get_jwt_payload($this);
+        if (!$payload) {
+            $this->output->set_status_header(401);
+            echo json_encode(array(
+                "message" => "Token tidak ditemukan",
+                "status" => 401,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 2. EXISTENCE & JURISDICTION CHECK ──
+        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+        $batch = $this->db->query(
+            "SELECT batch_id FROM tbl_amunisi_batch "
+            . "WHERE batch_id = " . $this->db->escape($batch_id)
+            . " AND polda_id = " . $this->db->escape($polda_id)
+        )->row_array();
+
+        if (!$batch) {
+            $this->output->set_content_type('application/json')->set_status_header(404);
+            echo json_encode(array(
+                "message" => "Batch amunisi tidak ditemukan.",
+                "status" => 404,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 3. DELETE ──
+        $sql = "DELETE FROM tbl_amunisi_batch WHERE batch_id = " . $this->db->escape($batch_id);
+        $delete = $this->db->query($sql);
+
+        if (!$delete) {
+            $this->output->set_content_type('application/json')->set_status_header(500);
+            echo json_encode(array(
+                "message" => "Gagal menghapus batch amunisi",
+                "status" => 500,
+                "data" => new stdClass()
+            ));
+            return;
+        }
+
+        // ── 4. SUCCESS ──
+        $this->output->set_content_type('application/json')->set_status_header(200);
+        echo json_encode(array(
+            "status" => 200,
+            "message" => "Data berhasil dihapus",
+            "data" => new stdClass()
+        ));
+    }
+
+    /**
      * POST /api/v1/logistik/satwa
      *
      * Registrasi aset satwa (K9 & Turangga).
