@@ -1205,10 +1205,11 @@ class Logistik extends CI_Controller {
         }
 
         // ── 6. FILE UPLOAD (multipart, CI3 Upload library) ──
-        //    Only when a real file was submitted; foto_url is optional and
+        //    Only when a real file was submitted; foto is optional and
         //    on UPDATE it is only replaced when a new file is sent.
+        //    Field name is `foto` (matches Flutter MultipartRequest).
         $foto_url = null;
-        if (isset($_FILES['foto_url']) && $_FILES['foto_url']['error'] !== UPLOAD_ERR_NO_FILE) {
+        if (isset($_FILES['foto']) && $_FILES['foto']['error'] !== UPLOAD_ERR_NO_FILE) {
             $upload_path = FCPATH . 'uploads/sarpras/';
             if (!is_dir($upload_path)) {
                 mkdir($upload_path, 0755, true);
@@ -1222,7 +1223,7 @@ class Logistik extends CI_Controller {
             );
             $this->load->library('upload', $config);
 
-            if (!$this->upload->do_upload('foto_url')) {
+            if (!$this->upload->do_upload('foto')) {
                 $error = $this->upload->display_errors('', '');
                 $err = strtolower($error);
                 if (strpos($err, 'size') !== false) {
