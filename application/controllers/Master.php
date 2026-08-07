@@ -606,9 +606,38 @@ class Master extends CI_Controller {
             return;
         }
 
+        // --- Pagination & real-time search query parameters ---
+        $search = trim((string) $this->input->get('search'));
+        $page   = max(1, (int) ($this->input->get('page') ?? 1));
+        $limit  = max(1, min(100, (int) ($this->input->get('limit') ?? 10)));
+
         // Only active (not soft-deleted) Kategori Senjata are shown to the frontend.
+        $this->db->where('is_active', 1);
+
+        // Optional real-time search: partial (LIKE) match on kaliber OR tipe_laras.
+        // group_start/group_end keep the OR inside parentheses so the search
+        // never bypasses the is_active = 1 filter above.
+        if ($search !== '') {
+            $this->db->group_start();
+            $this->db->like('kaliber', $search);
+            $this->db->or_like('tipe_laras', $search);
+            $this->db->group_end();
+        }
+
+        // Total rows matching the current filter. The FALSE second argument
+        // preserves the Query Builder state (WHERE/LIKE) for the get() below.
+        $total_data = $this->db->count_all_results('tbl_kategori_senjata', false);
+
+        // Stable ordering so pagination pages never overlap between requests.
         $this->db->order_by('kategori_id', 'ASC');
-        $rows = $this->db->get_where('tbl_kategori_senjata', ['is_active' => 1])->result_array();
+
+        // Pagination: LIMIT {limit} OFFSET {(page - 1) * limit}
+        // NOTE: get() is intentionally called WITHOUT a table name —
+        // count_all_results() already set qb_from; passing the table again
+        // would compile "FROM tbl_kategori_senjata, tbl_kategori_senjata"
+        // (cartesian product).
+        $this->db->limit($limit, ($page - 1) * $limit);
+        $rows = $this->db->get()->result_array();
 
         foreach ($rows as &$row) {
             $row['kategori_id'] = (int) $row['kategori_id'];
@@ -619,7 +648,15 @@ class Master extends CI_Controller {
         echo json_encode([
             'status' => 200,
             'message' => 'Daftar Kategori Senjata berhasil dimuat.',
-            'data' => $rows
+            'data' => [
+                'items' => $rows,
+                'pagination' => [
+                    'total_data'   => (int) $total_data,
+                    'total_pages'  => (int) ceil($total_data / $limit),
+                    'current_page' => $page,
+                    'per_page'     => $limit,
+                ]
+            ]
         ]);
     }
 
