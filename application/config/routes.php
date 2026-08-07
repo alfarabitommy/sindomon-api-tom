@@ -128,5 +128,13 @@ $route['api/v1/master/kategori-senjata/(:num)']['OPTIONS'] = 'master/kategori_se
 // Master / Pangkat + Jabatan (SDM dropdown master data)
 $route['api/v1/pangkat']['GET']  = 'master/pangkat_get';
 $route['api/v1/jabatan']['GET']  = 'master/jabatan_get';
+// CORS preflight - Master Data
+$route['api/v1/master/polda']['OPTIONS']         = 'master/polda_options';
+$route['api/v1/master/polda/(:num)']['OPTIONS']  = 'master/polda_options/$1';
+$route['api/v1/master/polres']['OPTIONS']        = 'master/polres_options';
+$route['api/v1/master/polres/(:num)']['OPTIONS'] = 'master/polres_options/$1';
+$route['api/v1/master/wilayah']['OPTIONS']       = 'master/wilayah_options';
+$route['api/v1/pangkat']['OPTIONS']              = 'master/pangkat_options';
+$route['api/v1/jabatan']['OPTIONS']              = 'master/jabatan_options';
 $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;

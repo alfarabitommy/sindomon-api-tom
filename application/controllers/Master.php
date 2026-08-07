@@ -799,6 +799,12 @@ class Master extends CI_Controller {
         exit;
     }
 
+    public function polda_options($id = null)  { /* Handled by __construct */ }
+    public function polres_options($id = null) { /* Handled by __construct */ }
+    public function wilayah_options()          { /* Handled by __construct */ }
+    public function pangkat_options()          { /* Handled by __construct */ }
+    public function jabatan_options()          { /* Handled by __construct */ }
+
     public function pangkat_get()
     {
         $payload = get_jwt_payload($this);
