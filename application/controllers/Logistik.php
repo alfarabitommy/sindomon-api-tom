@@ -616,8 +616,11 @@ class Logistik extends CI_Controller {
     /**
      * GET /api/v1/logistik/amunisi
      *
-     * Monitoring batch amunisi + H-90 alert engine.
-     * Auth: JWT (polda_id for jurisdiction)
+     * Monitoring batch amunisi + H-90 alert engine — joined with kategori
+     * for the kaliber label. Paginated with real-time search.
+     * Auth: JWT (role-based polda_id jurisdiction).
+     * Query params: ?search= (kode_batch OR kaliber),
+     *               ?page= (1-based, default 1), ?limit= (1..100, default 10).
      */
     public function amunisi_get()
     {
@@ -633,10 +636,28 @@ class Logistik extends CI_Controller {
             return;
         }
 
-        // ── 2. JURISDICTION ──
-        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+        // ── 2. ROLE & JURISDICTION ──
+        // Operator Polda (role_id=2) is locked to the JWT polda_id.
+        // Super Admin (role_id=1) / Eksekutif (role_id=3) may optionally
+        // override with ?polda_id= to inspect another jurisdiction.
+        $role_id = isset($payload['role_id']) ? (int) $payload['role_id'] : 0;
+        $polda_id = 0;
+        if ($role_id == 2) {
+            $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+        } else if ($role_id == 1 || $role_id == 3) {
+            $query_polda = $this->input->get('polda_id');
+            if ($query_polda !== null && $query_polda !== '') {
+                $polda_id = (int) $query_polda;
+            }
+        }
 
-        // ── 3. BUILD QUERY ──
+        // ── 3. QUERY PARAMS (pagination & real-time search) ──
+        // ?page= is 1-based; ?limit= is clamped to 1..100 like senjata_get.
+        $search = $this->input->get('search');
+        $page   = max(1, (int) ($this->input->get('page') ?? 1));
+        $limit  = max(1, min(100, (int) ($this->input->get('limit') ?? 10)));
+
+        // ── 4. BUILD QUERY ──
         $this->db->select('a.*, k.kaliber');
         $this->db->from('tbl_amunisi_batch a');
         // LEFT JOIN so batches still appear even if the Kategori was soft-deleted,
@@ -648,17 +669,29 @@ class Logistik extends CI_Controller {
             $this->db->where('a.polda_id', $polda_id);
         }
 
-        // Search filter
-        $search = $this->input->get('search');
+        // Search filter — kode_batch OR kaliber.
+        // group_start/group_end keep the OR inside parentheses so the search
+        // never bypasses the jurisdiction (polda_id) filter above.
         if ($search !== null && $search !== '') {
+            $this->db->group_start();
             $this->db->like('a.kode_batch', $search);
+            $this->db->or_like('k.kaliber', $search);
+            $this->db->group_end();
         }
 
-        $this->db->order_by('a.created_at', 'DESC');
-        $query = $this->db->get();
-        $rows = $query->result_array();
+        // ── 5. COUNT-FIRST: total rows matching the current filters ──
+        // NOTE: count_all_results('', false) with an EMPTY string keeps the
+        // qb_from state ('tbl_amunisi_batch a') set by ->from() above. Passing
+        // the table name again would duplicate FROM -> cartesian product. FALSE
+        // preserves all WHERE/LIKE/JOIN state for the get() below.
+        $total_data = $this->db->count_all_results('', false);
 
-        // ── 4. H-90 ALERT ENGINE & DATA MAPPING ──
+        // ── 6. ORDER & PAGINATION ──
+        $this->db->order_by('a.created_at', 'DESC');
+        $this->db->limit($limit, ($page - 1) * $limit);
+        $rows = $this->db->get()->result_array(); // NO table name — qb_from is already set
+
+        // ── 7. H-90 ALERT ENGINE & DATA MAPPING ──
         $today = time();
         $mapped = array();
         foreach ($rows as $row) {
@@ -682,12 +715,20 @@ class Logistik extends CI_Controller {
             );
         }
 
-        // ── 5. SUCCESS RESPONSE ──
+        // ── 8. SUCCESS RESPONSE (paginated envelope) ──
         $this->output->set_content_type('application/json')->set_status_header(200);
         echo json_encode(array(
             "status" => 200,
             "message" => "Daftar amunisi termuat.",
-            "data" => $mapped
+            "data" => array(
+                "items" => $mapped,
+                "pagination" => array(
+                    "total_data"   => (int) $total_data,
+                    "total_pages"  => (int) ceil($total_data / $limit),
+                    "current_page" => $page,
+                    "per_page"     => $limit
+                )
+            )
         ));
     }
 
