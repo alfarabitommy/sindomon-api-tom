@@ -1326,7 +1326,10 @@ class Logistik extends CI_Controller {
      * GET /api/v1/logistik/sarpras
      *
      * Inventarisasi Sarpras & Altmatsus.
-     * Auth: JWT (polda_id for jurisdiction), ?search= filters nama_barang OR kode_barang.
+     * Auth: JWT (role-based jurisdiction: Operator locked to polda_id,
+     *        Super Admin/Eksekutif may ?polda_id= override),
+     * ?search= filters nama_barang OR kode_barang,
+     * ?page= (1-based) + ?limit= (1..100, default 10) pagination.
      */
     public function sarpras_get()
     {
@@ -1342,31 +1345,59 @@ class Logistik extends CI_Controller {
             return;
         }
 
-        // ── 2. JURISDICTION ──
-        $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+        // ── 2. ROLE & JURISDICTION ──
+        // Operator Polda (role_id=2) is locked to the JWT polda_id.
+        // Super Admin (role_id=1) / Eksekutif (role_id=3) may optionally
+        // override with ?polda_id= to inspect another jurisdiction.
+        $role_id = isset($payload['role_id']) ? (int) $payload['role_id'] : 0;
+        $polda_id = 0;
+        if ($role_id == 2) {
+            $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
+        } else if ($role_id == 1 || $role_id == 3) {
+            $query_polda = $this->input->get('polda_id');
+            if ($query_polda !== null && $query_polda !== '') {
+                $polda_id = (int) $query_polda;
+            }
+        }
 
-        // ── 3. BUILD QUERY ──
-        $this->db->from('tbl_sarpras');
+        // ── 3. QUERY PARAMS (pagination & real-time search) ──
+        // ?page= is 1-based; ?limit= is clamped to 1..100 like senjata_get.
+        $search = $this->input->get('search');
+        $page   = max(1, (int) ($this->input->get('page') ?? 1));
+        $limit  = max(1, min(100, (int) ($this->input->get('limit') ?? 10)));
+
+        // ── 4. BUILD QUERY ──
+        $this->db->from('tbl_sarpras s');
 
         // Jurisdiction filter
         if ($polda_id > 0) {
-            $this->db->where('polda_id', $polda_id);
+            $this->db->where('s.polda_id', $polda_id);
         }
 
-        // Search filter — nama_barang OR kode_barang
-        $search = $this->input->get('search');
+        // Search filter — nama_barang OR kode_barang.
+        // group_start/group_end keep the OR inside parentheses so the search
+        // never bypasses the jurisdiction (polda_id) filter above.
         if ($search !== null && $search !== '') {
             $this->db->group_start();
-            $this->db->like('nama_barang', $search);
-            $this->db->or_like('kode_barang', $search);
+            $this->db->like('s.nama_barang', $search);
+            $this->db->or_like('s.kode_barang', $search);
             $this->db->group_end();
         }
 
-        $this->db->order_by('created_at', 'DESC');
-        $query = $this->db->get();
+        // ── 5. COUNT-FIRST: total rows matching the current filters ──
+        // NOTE: count_all_results('', false) with an EMPTY string keeps the
+        // qb_from state ('tbl_sarpras s') set by ->from() above. Passing the
+        // table name again would duplicate FROM -> cartesian product. FALSE
+        // preserves all WHERE/LIKE state for the get() below.
+        $total_data = $this->db->count_all_results('', false);
+
+        // ── 6. ORDER & PAGINATION ──
+        $this->db->order_by('s.created_at', 'DESC');
+        $this->db->limit($limit, ($page - 1) * $limit);
+        $query = $this->db->get(); // NO table name — qb_from is already set
         $rows = $query->result_array();
 
-        // ── 4. INTEGER CASTING & MAP ──
+        // ── 7. INTEGER CASTING & MAP ──
         $mapped = array();
         foreach ($rows as $row) {
             $mapped[] = array(
@@ -1383,12 +1414,20 @@ class Logistik extends CI_Controller {
             );
         }
 
-        // ── 5. SUCCESS RESPONSE ──
+        // ── 8. SUCCESS RESPONSE (paginated envelope) ──
         $this->output->set_content_type('application/json')->set_status_header(200);
         echo json_encode(array(
             "status" => 200,
             "message" => "Daftar sarpras termuat.",
-            "data" => $mapped
+            "data" => array(
+                "items" => $mapped,
+                "pagination" => array(
+                    "total_data"   => (int) $total_data,
+                    "total_pages"  => (int) ceil($total_data / $limit),
+                    "current_page" => $page,
+                    "per_page"     => $limit
+                )
+            )
         ));
     }
 
