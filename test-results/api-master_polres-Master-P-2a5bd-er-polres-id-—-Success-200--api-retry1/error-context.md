@@ -6,20 +6,70 @@
 
 # Test info
 
-- Name: api/master_polres.spec.ts >> Master Polres API >> DELETE /api/v1/master/polres/:id — Conflict Trap (409)
-- Location: tests/api/master_polres.spec.ts:149:7
+- Name: api/master_polres.spec.ts >> Master Polres API >> PUT /api/v1/master/polres/:id — Success (200)
+- Location: tests/api/master_polres.spec.ts:92:7
 
 # Error details
 
 ```
-Error: Command failed: mysql -u root -proot sindomondb -e "CREATE TABLE IF NOT EXISTS tbl_personil (personil_id VARCHAR(36) COLLATE utf8mb4_unicode_ci NOT NULL, nrp VARCHAR(20) NOT NULL, nama_lengkap VARCHAR(255) NOT NULL, pangkat_id INT(11) DEFAULT NULL, jabatan_id INT(11) DEFAULT NULL, status_aktif VARCHAR(50) DEFAULT NULL, polda_id INT(11) DEFAULT NULL, polres_id INT(11) DEFAULT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (personil_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-/bin/sh: 1: mysql: not found
+Error: expect(received).toBe(expected) // Object.is equality
 
+Expected: 200
+Received: 409
 ```
 
 # Test source
 
 ```ts
+  3   | 
+  4   | const MAX_LATENCY_MS = 1000;
+  5   | 
+  6   | function assertEnvelope(body: Record<string, unknown>, path: string) {
+  7   |   expect(body, `${path}: missing 'status'`).toHaveProperty('status');
+  8   |   expect(body, `${path}: missing 'message'`).toHaveProperty('message');
+  9   | }
+  10  | 
+  11  | function assertLatency(startMs: number, path: string, maxMs = MAX_LATENCY_MS) {
+  12  |   const duration = Date.now() - startMs;
+  13  |   expect(
+  14  |     duration,
+  15  |     `${path}: response took ${duration}ms, exceeding ${maxMs}ms threshold`,
+  16  |   ).toBeLessThan(maxMs);
+  17  | }
+  18  | 
+  19  | test.describe.serial('Master Polres API', () => {
+  20  |   let adminJwt: string;
+  21  |   let operatorJwt: string;
+  22  |   let createdPolresId: number;
+  23  | 
+  24  |   test('Auth: Admin login returns role_id=1', async ({ request }) => {
+  25  |     const start = Date.now();
+  26  |     const res = await request.post('/api/v1/auth/login', {
+  27  |       data: { username: 'admin', password: 'admin123' },
+  28  |     });
+  29  |     assertLatency(start, '/auth/login (admin)');
+  30  |     expect(res.status()).toBe(200);
+  31  | 
+  32  |     const body = await res.json();
+  33  |     expect(body.data).toHaveProperty('jwt_token');
+  34  |     assertEnvelope(body, '/auth/login (admin)');
+  35  |     adminJwt = body.data.jwt_token;
+  36  |   });
+  37  | 
+  38  |   test('Auth: Operator login returns role_id=2', async ({ request }) => {
+  39  |     const start = Date.now();
+  40  |     const res = await request.post('/api/v1/auth/login', {
+  41  |       data: { username: 'operator_test', password: 'operator123' },
+  42  |     });
+  43  |     assertLatency(start, '/auth/login (operator)');
+  44  |     expect(res.status()).toBe(200);
+  45  | 
+  46  |     const body = await res.json();
+  47  |     expect(body.data).toHaveProperty('jwt_token');
+  48  |     operatorJwt = body.data.jwt_token;
+  49  |   });
+  50  | 
+  51  |   test('POST /api/v1/master/polres — Success (201)', async ({ request }) => {
   52  |     const start = Date.now();
   53  |     const res = await request.post('/api/v1/master/polres', {
   54  |       headers: { Authorization: `Bearer ${adminJwt}` },
@@ -71,7 +121,8 @@ Error: Command failed: mysql -u root -proot sindomondb -e "CREATE TABLE IF NOT E
   100 |     });
   101 |     assertLatency(start, 'PUT /master/polres (success)');
   102 | 
-  103 |     expect(res.status()).toBe(200);
+> 103 |     expect(res.status()).toBe(200);
+      |                          ^ Error: expect(received).toBe(expected) // Object.is equality
   104 |     const body = await res.json();
   105 |     assertEnvelope(body, 'PUT /master/polres (success)');
   106 |     expect(body.status).toBe(200);
@@ -120,8 +171,7 @@ Error: Command failed: mysql -u root -proot sindomondb -e "CREATE TABLE IF NOT E
   149 |   test('DELETE /api/v1/master/polres/:id — Conflict Trap (409)', async ({ request }) => {
   150 |     const trapNrp = '88TRAP99';
   151 | 
-> 152 |     execSync(
-      |             ^ Error: Command failed: mysql -u root -proot sindomondb -e "CREATE TABLE IF NOT EXISTS tbl_personil (personil_id VARCHAR(36) COLLATE utf8mb4_unicode_ci NOT NULL, nrp VARCHAR(20) NOT NULL, nama_lengkap VARCHAR(255) NOT NULL, pangkat_id INT(11) DEFAULT NULL, jabatan_id INT(11) DEFAULT NULL, status_aktif VARCHAR(50) DEFAULT NULL, polda_id INT(11) DEFAULT NULL, polres_id INT(11) DEFAULT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (personil_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+  152 |     execSync(
   153 |       'mysql -u root -proot sindomondb -e "CREATE TABLE IF NOT EXISTS tbl_personil (personil_id VARCHAR(36) COLLATE utf8mb4_unicode_ci NOT NULL, nrp VARCHAR(20) NOT NULL, nama_lengkap VARCHAR(255) NOT NULL, pangkat_id INT(11) DEFAULT NULL, jabatan_id INT(11) DEFAULT NULL, status_aktif VARCHAR(50) DEFAULT NULL, polda_id INT(11) DEFAULT NULL, polres_id INT(11) DEFAULT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (personil_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"',
   154 |       { cwd: process.cwd(), timeout: 10000 }
   155 |     );

@@ -36,8 +36,32 @@ class Master extends CI_Controller {
             return;
         }
 
+        // --- Pagination & real-time search query parameters ---
+        $search = trim((string) $this->input->get('search'));
+        $page   = max(1, (int) ($this->input->get('page') ?? 1));
+        $limit  = max(1, min(100, (int) ($this->input->get('limit') ?? 10)));
+
         // Only active (not soft-deleted) Polda are shown to the frontend.
-        $rows = $this->db->get_where('tbl_polda', ['is_active' => 1])->result_array();
+        $this->db->where('is_active', 1);
+
+        // Optional real-time search: partial (LIKE) match on nama_polda.
+        if ($search !== '') {
+            $this->db->like('nama_polda', $search);
+        }
+
+        // Total rows matching the current filter. The FALSE second argument
+        // preserves the Query Builder state (WHERE/LIKE) for the get() below.
+        $total_data = $this->db->count_all_results('tbl_polda', false);
+
+        // Stable ordering so pagination pages never overlap between requests.
+        $this->db->order_by('id', 'ASC');
+
+        // Pagination: LIMIT {limit} OFFSET {(page - 1) * limit}
+        // NOTE: get() is intentionally called WITHOUT a table name —
+        // count_all_results() already set qb_from; passing the table again
+        // would compile "FROM tbl_polda, tbl_polda" (cartesian product).
+        $this->db->limit($limit, ($page - 1) * $limit);
+        $rows = $this->db->get()->result_array();
 
         foreach ($rows as &$row) {
             $row['id'] = (int) $row['id'];
@@ -48,7 +72,15 @@ class Master extends CI_Controller {
         echo json_encode([
             'status' => 200,
             'message' => 'Daftar Polda berhasil dimuat.',
-            'data' => $rows
+            'data' => [
+                'items' => $rows,
+                'pagination' => [
+                    'total_data'   => (int) $total_data,
+                    'total_pages'  => (int) ceil($total_data / $limit),
+                    'current_page' => $page,
+                    'per_page'     => $limit,
+                ]
+            ]
         ]);
     }
 
