@@ -281,7 +281,9 @@ class Logistik extends CI_Controller {
      * GET /api/v1/logistik/senjata
      *
      * Inventarisasi senjata api — joined with kategori for readable labels.
-     * Auth: JWT (polda_id for jurisdiction), ?search= for nomor_seri filter.
+     * Auth: JWT (polda_id for jurisdiction).
+     * Query params: ?search= (nomor_seri OR kaliber OR tipe_laras),
+     *               ?page= (1-based, default 1), ?limit= (1..100, default 10).
      */
     public function senjata_get()
     {
@@ -300,7 +302,13 @@ class Logistik extends CI_Controller {
         // ── 2. JURISDICTION ──
         $polda_id = isset($payload['polda_id']) ? (int) $payload['polda_id'] : 0;
 
-        // ── 3. BUILD QUERY ──
+        // ── 3. QUERY PARAMS (pagination & real-time search) ──
+        // ?page= is 1-based; ?limit= is clamped to 1..100 like personil_get.
+        $search = $this->input->get('search');
+        $page   = max(1, (int) ($this->input->get('page') ?? 1));
+        $limit  = max(1, min(100, (int) ($this->input->get('limit') ?? 10)));
+
+        // ── 4. BUILD QUERY ──
         $this->db->select('s.*, k.tipe_laras, k.kaliber');
         $this->db->from('tbl_senjata s');
         // LEFT JOIN so senjata still appear even if kategori was soft-deleted,
@@ -312,17 +320,31 @@ class Logistik extends CI_Controller {
             $this->db->where('s.polda_id', $polda_id);
         }
 
-        // Search filter — nomor_seri
-        $search = $this->input->get('search');
+        // Search filter — nomor_seri OR kaliber OR tipe_laras.
+        // group_start/group_end keep the OR inside parentheses so the search
+        // never bypasses the jurisdiction (polda_id) filter above.
         if ($search !== null && $search !== '') {
+            $this->db->group_start();
             $this->db->like('s.nomor_seri', $search);
+            $this->db->or_like('k.kaliber', $search);
+            $this->db->or_like('k.tipe_laras', $search);
+            $this->db->group_end();
         }
 
+        // ── 5. COUNT-FIRST: total rows matching the current filters ──
+        // NOTE: count_all_results('', false) with an EMPTY string keeps the
+        // qb_from state ('tbl_senjata s') set by ->from() above. Passing the
+        // table name again would duplicate FROM -> cartesian product. FALSE
+        // preserves all WHERE/LIKE/JOIN state for the get() below.
+        $total_data = $this->db->count_all_results('', false);
+
+        // ── 6. ORDER & PAGINATION ──
         $this->db->order_by('s.created_at', 'DESC');
-        $query = $this->db->get();
+        $this->db->limit($limit, ($page - 1) * $limit);
+        $query = $this->db->get(); // NO table name — qb_from is already set
         $rows = $query->result_array();
 
-        // ── 4. INTEGER CASTING & MAP ──
+        // ── 7. INTEGER CASTING & MAP ──
         $mapped = array();
         foreach ($rows as $row) {
             $mapped[] = array(
@@ -341,12 +363,20 @@ class Logistik extends CI_Controller {
             );
         }
 
-        // ── 5. SUCCESS RESPONSE ──
+        // ── 8. SUCCESS RESPONSE (paginated envelope) ──
         $this->output->set_content_type('application/json')->set_status_header(200);
         echo json_encode(array(
             "status" => 200,
             "message" => "Daftar senjata termuat.",
-            "data" => $mapped
+            "data" => array(
+                "items" => $mapped,
+                "pagination" => array(
+                    "total_data"   => (int) $total_data,
+                    "total_pages"  => (int) ceil($total_data / $limit),
+                    "current_page" => $page,
+                    "per_page"     => $limit
+                )
+            )
         ));
     }
     /**
