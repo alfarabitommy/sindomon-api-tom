@@ -306,22 +306,44 @@ class Master extends CI_Controller {
             return;
         }
 
+        // --- Pagination & real-time search query parameters ---
+        $search = trim((string) $this->input->get('search'));
+        $page   = max(1, (int) ($this->input->get('page') ?? 1));
+        $limit  = max(1, min(100, (int) ($this->input->get('limit') ?? 10)));
+
+        // Existing filter: drill-down by parent Polda (preserved).
         $polda_id_filter = $this->input->get('polda_id');
 
-        $this->db->select('r.polres_id, r.polda_id, r.nama_polres, p.nama_polda');
-        $this->db->from('tbl_polres r');
-        // LEFT JOIN so Polres still appear even if parent Polda was soft-deleted,
-        // but the (deleted) Polda name must not leak into the response.
-        $this->db->join('tbl_polda p', 'r.polda_id = p.id AND p.is_active = 1', 'left');
+        // Only active (not soft-deleted) Polres are shown to the frontend.
         $this->db->where('r.is_active', 1);
 
         if ($polda_id_filter !== null && $polda_id_filter !== '') {
             $this->db->where('r.polda_id', (int) $polda_id_filter);
         }
 
+        // Optional real-time search: partial (LIKE) match on nama_polres.
+        if ($search !== '') {
+            $this->db->like('r.nama_polres', $search);
+        }
+
+        // Total rows matching the current filter. The FALSE second argument
+        // preserves the Query Builder state (WHERE/LIKE) for the get() below.
+        $total_data = $this->db->count_all_results('tbl_polres r', false);
+
+        // LEFT JOIN so Polres still appear even if parent Polda was soft-deleted,
+        // but the (deleted) Polda name must not leak into the response.
+        $this->db->select('r.polres_id, r.polda_id, r.nama_polres, p.nama_polda');
+        $this->db->join('tbl_polda p', 'r.polda_id = p.id AND p.is_active = 1', 'left');
+
+        // Stable ordering so pagination pages never overlap between requests.
         $this->db->order_by('r.polres_id', 'ASC');
-        $query = $this->db->get();
-        $rows = $query->result_array();
+
+        // Pagination: LIMIT {limit} OFFSET {(page - 1) * limit}
+        // NOTE: get() is intentionally called WITHOUT a table name —
+        // count_all_results() already set qb_from; passing the table again
+        // would compile "FROM tbl_polres, tbl_polres" (cartesian product).
+        $this->db->limit($limit, ($page - 1) * $limit);
+        $rows = $this->db->get()->result_array();
 
         foreach ($rows as &$row) {
             $row['polres_id'] = (int) $row['polres_id'];
@@ -333,7 +355,15 @@ class Master extends CI_Controller {
         echo json_encode([
             'status' => 200,
             'message' => 'Daftar Polres berhasil dimuat.',
-            'data' => $rows
+            'data' => [
+                'items' => $rows,
+                'pagination' => [
+                    'total_data'   => (int) $total_data,
+                    'total_pages'  => (int) ceil($total_data / $limit),
+                    'current_page' => $page,
+                    'per_page'     => $limit,
+                ]
+            ]
         ]);
     }
 
