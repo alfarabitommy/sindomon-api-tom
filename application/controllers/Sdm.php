@@ -121,6 +121,9 @@ class Sdm extends CI_Controller {
      * Authorization:
      *   - role_id=1 (Administrator) / role_id=3 (Eksekutif): optional ?polda_id=, ?polres_id=, ?search=, ?status=
      *   - role_id=2 (Operator Polda): locked to JWT polda_id
+     *
+     * Query params: ?search= (nama_lengkap/nrp LIKE), ?polres_id=, ?status=,
+     *               ?page= (1-based, min 1), ?limit= (1..100, default 10)
      */
     public function personil_get()
     {
@@ -159,7 +162,7 @@ class Sdm extends CI_Controller {
             return;
         }
 
-        // ── 3. QUERY: SELECT + 5 LEFT JOINs ──
+        // ── 3. QUERY: SELECT + 4 LEFT JOINs ──
         $this->db->select("
             p.personil_id,
             p.nrp,
@@ -181,6 +184,10 @@ class Sdm extends CI_Controller {
         ->join('tbl_polda pda', 'p.polda_id = pda.id AND pda.is_active = 1', 'left');
 
         // ── 4. DYNAMIC FILTERS (GET params) ──
+
+        // ?page= & ?limit= (pagination: page is 1-based, limit clamped 1..100)
+        $page  = max(1, (int) ($this->input->get('page') ?? 1));
+        $limit = max(1, min(100, (int) ($this->input->get('limit') ?? 10)));
 
         // ?search= (nama_lengkap OR nrp)
         $search = $this->input->get('search');
@@ -214,12 +221,20 @@ class Sdm extends CI_Controller {
             }
         }
 
-        // ── 5. ORDER & EXECUTE ──
+        // ── 5. COUNT-FIRST: total rows matching the current filters ──
+        // NOTE: count_all_results('', false) with an EMPTY string keeps the
+        // qb_from state ('tbl_personil p') set by ->from() above. Passing the
+        // table name again would duplicate FROM -> cartesian product. FALSE
+        // preserves all WHERE/LIKE/JOIN state for the get() below.
+        $total_data = $this->db->count_all_results('', false);
+
+        // ── 6. ORDER & PAGINATION ──
         $this->db->order_by('p.nrp', 'ASC');
-        $query = $this->db->get();
+        $this->db->limit($limit, ($page - 1) * $limit);
+        $query = $this->db->get(); // NO table name — qb_from is already set
         $rows = $query->result_array();
 
-        // ── 6. TYPE CAST relational IDs (Flutter compatibility) ──
+        // ── 7. TYPE CAST relational IDs (Flutter compatibility) ──
         foreach ($rows as &$row) {
             $row['pangkat_id'] = $row['pangkat_id'] !== null ? (int) $row['pangkat_id'] : null;
             $row['jabatan_id'] = $row['jabatan_id'] !== null ? (int) $row['jabatan_id'] : null;
@@ -228,12 +243,20 @@ class Sdm extends CI_Controller {
         }
         unset($row);
 
-        // ── 7. SUCCESS ──
+        // ── 8. SUCCESS ──
         $this->output->set_status_header(200);
         echo json_encode(array(
             "message" => "Daftar personel berhasil dimuat.",
             "status" => 200,
-            "data" => $rows
+            "data" => array(
+                "items" => $rows,
+                "pagination" => array(
+                    "total_data"   => (int) $total_data,
+                    "total_pages"  => (int) ceil($total_data / $limit),
+                    "current_page" => $page,
+                    "per_page"     => $limit
+                )
+            )
         ));
     }
 
