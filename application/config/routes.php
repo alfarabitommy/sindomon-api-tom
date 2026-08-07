@@ -120,10 +120,11 @@ $route['api/v1/master/polres/(:num)']['PUT'] = 'master/polres_put/$1';
 $route['api/v1/master/polres/(:num)']['DELETE'] = 'master/polres_delete/$1';
 // Master / Kategori Senjata (Logistik master data)
 $route['api/v1/master/kategori-senjata']['GET']           = 'master/kategori_senjata_get';
-$route['api/v1/master/kategori-senjata']['OPTIONS']       = 'master/kategori_senjata_get';
+$route['api/v1/master/kategori-senjata']['OPTIONS']       = 'master/kategori_senjata_options';
 $route['api/v1/master/kategori-senjata']['POST']          = 'master/kategori_senjata_post';
 $route['api/v1/master/kategori-senjata/(:num)']['PUT']    = 'master/kategori_senjata_put/$1';
 $route['api/v1/master/kategori-senjata/(:num)']['DELETE'] = 'master/kategori_senjata_delete/$1';
+$route['api/v1/master/kategori-senjata/(:num)']['OPTIONS'] = 'master/kategori_senjata_options/$1';
 // Master / Pangkat + Jabatan (SDM dropdown master data)
 $route['api/v1/pangkat']['GET']  = 'master/pangkat_get';
 $route['api/v1/jabatan']['GET']  = 'master/jabatan_get';

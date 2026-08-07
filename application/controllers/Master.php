@@ -786,6 +786,19 @@ class Master extends CI_Controller {
         ]);
     }
 
+    /**
+     * OPTIONS /api/v1/master/kategori-senjata, /api/v1/master/kategori-senjata/(:num)
+     *
+     * CORS preflight. Route exists so CI3 passes the pre-dispatch
+     * method_exists() gate and instantiates the controller, letting
+     * __construct() emit CORS headers and short-circuit with HTTP 200.
+     * $id = null satisfies both the exact and (:num) OPTIONS routes.
+     */
+    public function kategori_senjata_options($id = null) {
+        http_response_code(200);
+        exit;
+    }
+
     public function pangkat_get()
     {
         $payload = get_jwt_payload($this);
