@@ -131,10 +131,8 @@ class Auth extends CI_Controller {
             return;
         }
 
-        // Check duplicate username
-        $dup = $this->db->query(
-            "SELECT id FROM tbl_users WHERE username = '".$data['username']."'"
-        )->num_rows();
+        // Check duplicate username (Query Builder — parameterized, no raw SQL)
+        $dup = $this->db->get_where('tbl_users', ['username' => $data['username']])->num_rows();
         if ($dup > 0) {
             http_response_code(409);
             echo json_encode([
@@ -157,25 +155,28 @@ class Auth extends CI_Controller {
             return;
         }
 
-        $polda_id = isset($data['polda_id']) ? (int) $data['polda_id'] : null;
-        $polda_val = $polda_id !== null ? "'".$polda_id."'" : "NULL";
+        $polda_id = isset($data['polda_id']) && $data['polda_id'] !== '' && $data['polda_id'] !== null
+            ? (int) $data['polda_id']
+            : null;
 
-        $rows = $this->db->query(
-            "INSERT INTO tbl_users(username, password, roles_id, polda_id, uuid, token, expired, is_active, created_at)
-             VALUES (
-                 '".$data['username']."',
-                 '".password_hash($data['password'], PASSWORD_DEFAULT)."',
-                 '".$data['roles_id']."',
-                 ".$polda_val.",
-                 '".$h_uuid."',
-                 '".$r_string."',
-                 '30',
-                 1,
-                 '".date('Y-m-d H:i:s')."'
-             )"
-        );
+        // Insert via Query Builder — parameterized, no string interpolation
+        $insert_data = [
+            'username'   => $data['username'],
+            'password'   => password_hash($data['password'], PASSWORD_DEFAULT),
+            'roles_id'   => (int) $data['roles_id'],
+            'polda_id'   => $polda_id,
+            'uuid'       => $h_uuid,
+            'token'      => $r_string,
+            'expired'    => '30',
+            'is_active'  => 1,
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+
+        $rows = $this->db->insert('tbl_users', $insert_data);
 
         if ($rows) {
+            // Never echo the plaintext password back in the response
+            unset($data['password']);
             http_response_code(201);
             echo json_encode([
                 'status' => 201,
@@ -200,6 +201,17 @@ class Auth extends CI_Controller {
             echo json_encode([
                 'status' => 401,
                 'message' => 'Token tidak ditemukan atau tidak valid.',
+                'data' => (object)[]
+            ]);
+            return;
+        }
+
+        // ── Super Admin gate (only Super Admin may list all users) ──
+        if (!isset($payload['role_id']) || $payload['role_id'] !== 1) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 403,
+                'message' => 'Akses ditolak. Anda tidak memiliki otoritas Super Admin.',
                 'data' => (object)[]
             ]);
             return;
