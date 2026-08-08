@@ -141,5 +141,10 @@ $route['api/v1/master/polres/(:num)']['OPTIONS'] = 'master/polres_options/$1';
 $route['api/v1/master/wilayah']['OPTIONS']       = 'master/wilayah_options';
 $route['api/v1/pangkat']['OPTIONS']              = 'master/pangkat_options';
 $route['api/v1/jabatan']['OPTIONS']              = 'master/jabatan_options';
+// Dashboard / Executive Command Center
+$route['api/v1/dashboard/nasional']['GET']      = 'dashboard/nasional_get';
+$route['api/v1/dashboard/nasional']['OPTIONS']  = 'dashboard/nasional_get';
+$route['api/v1/dashboard/drilldown']['GET']     = 'dashboard/drilldown_get';
+$route['api/v1/dashboard/drilldown']['OPTIONS'] = 'dashboard/drilldown_get';
 $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
