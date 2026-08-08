@@ -62,7 +62,8 @@ $route['api/v1/role']['post']   = 'role/post';
 $route['api/v1/role']['put']    = 'role/put';
 $route['api/v1/role']['delete'] = 'role/delete';
 //Profile
-$route['api/v1/profile']['get']    = 'profile/get';
+$route['api/v1/profile']['GET']     = 'profile/get';
+$route['api/v1/profile']['OPTIONS'] = 'profile/get';
 // Polda (legacy — used by Flutter app)
 $route['api/v1/polda']['GET']                      = 'polda/get';
 $route['api/v1/polda']['OPTIONS']                  = 'polda/get';
